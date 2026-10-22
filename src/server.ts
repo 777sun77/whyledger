@@ -6,6 +6,7 @@ import { getBackend } from "./data/index.ts";
 import { investigate } from "./agent/investigator.ts";
 import { openMemory } from "./memory/meterless.ts";
 import { llmLabel } from "./llm/provider.ts";
+import { DATASETS } from "./agent/datasets.ts";
 
 const port = Number(process.env.PORT ?? 8787);
 const backend = await getBackend();
@@ -16,14 +17,19 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   try {
     if (url.pathname === "/") { res.writeHead(200, { "content-type": "text/html" }); return res.end(page()); }
-    if (url.pathname === "/api/status") return json(res, { backend: backend.name, zetaris: backend.isZetaris, llm: llmLabel() });
+    if (url.pathname === "/api/status") return json(res, { backend: backend.name, zetaris: backend.isZetaris, llm: llmLabel(), examples: backend.isZetaris ? [...DATASETS.retail.examples, ...DATASETS.taxi.examples] : DATASETS.retail.examples });
     if (url.pathname === "/api/investigate") {
       // Server-sent events: the UI shows each step as the agent works
       const q = url.searchParams.get("q") ?? "";
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      const report = await investigate(q, backend, mem, (step, detail) => send("step", { step, detail }));
-      send("report", report);
+      const t0 = Date.now();
+      try {
+        const report = await investigate(q, backend, mem, (step, detail, data) => send("step", { step, detail, data, ms: Date.now() - t0 }));
+        send("report", report);
+      } catch (e) {
+        send("error", { error: (e as Error).message });
+      }
       return res.end();
     }
     if (url.pathname === "/api/feedback" && req.method === "POST") {
@@ -35,7 +41,14 @@ http.createServer(async (req, res) => {
       const id = url.searchParams.get("id") ?? "";
       return json(res, { id, history: mem.hmem.ledger.history(id) });
     }
-    if (url.pathname === "/api/world") return json(res, { audit: mem.world.audit().slice(-50) });
+    if (url.pathname === "/api/world") {
+      const shape: any = mem.world.stateShape();
+      const audit = mem.world.audit();
+      return json(res, {
+        entities: shape.entities.length, relationships: shape.relationships.length, facts: shape.facts.length, audit: audit.length,
+        recent: audit.slice(-6).map((a: any) => `${a.kind}: ${String(a.summary).slice(0, 100)}`),
+      });
+    }
     res.writeHead(404); res.end();
   } catch (e) {
     if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });

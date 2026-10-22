@@ -16,7 +16,7 @@ export class ZetarisBackend implements SqlBackend {
   }
 
   t(table: string) {
-    return `${this.z.tpcdsPrefix}${table}`;
+    return `${this.z.martPrefix}${table}`;
   }
 
   private async auth(): Promise<string> {
@@ -57,7 +57,7 @@ export class ZetarisBackend implements SqlBackend {
 
   async catalog() {
     const out: { table: string; columns: string[] }[] = [];
-    const tables = await this.run(`SHOW TABLES IN ${this.z.tpcdsPrefix.replace(/\.$/, "") || "TPCDS_DB"}`);
+    const tables = await this.run(`SHOW TABLES IN ${this.z.martPrefix.replace(/\.$/, "")}`);
     for (const row of tables.rows.slice(0, 40)) {
       const name = String(Object.values(row).find((v) => typeof v === "string") ?? "");
       if (!name) continue;

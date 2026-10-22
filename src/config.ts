@@ -25,8 +25,8 @@ export const config = {
     password: env("ZETARIS_PASSWORD"),
     engineId: env("ZETARIS_ENGINE_ID"),
     limit: Number(env("ZETARIS_QUERY_LIMIT", "1000")),
-    // Lightning namespace prefix for the TPC-DS sample, e.g. "TPCDS_DB." (blank locally)
-    tpcdsPrefix: env("WHYLEDGER_TPCDS_PREFIX", "")!,
+    // Lightning database holding the materialized investigation cubes (zetaris/*.sql)
+    martPrefix: env("WHYLEDGER_MART_PREFIX", "WHYLEDGER_MART.")!,
   },
   llm: {
     // nvidia | openrouter | meterless | none

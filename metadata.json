@@ -2,52 +2,104 @@
   "project": "WhyLedger",
   "tagline": "Ask why a business number moved. Get the answer, what was ruled out, and a receipt for every claim.",
   "hackathon": "Open Agent Hackathon 2026 (GenAI Works)",
-  "team": { "name": "Charlie Agents", "size": 1 },
+  "team": {
+    "name": "Charlie Agents",
+    "size": 1
+  },
   "track": "Track 02: The Agent That Can Explain Why",
-  "target_users": ["retail and store operations managers", "FP&A / business analysts who must explain KPI changes"],
+  "target_users": [
+    "retail and store operations managers",
+    "FP&A / business analysts who must explain KPI changes"
+  ],
   "problem": "Explaining why a KPI moved means manually querying many disconnected tables and tools, and the final answer rarely shows its evidence or what was ruled out.",
   "repository": "https://github.com/777sun77/whyledger",
   "demo_video": "TBD",
   "pitch_deck": "TBD",
   "license": "Apache-2.0",
-  "built_during_window": { "start_utc": "2026-10-22T00:00:00Z", "end_utc": "2026-10-27T23:45:00Z" },
+  "built_during_window": {
+    "start_utc": "2026-10-22T00:00:00Z",
+    "end_utc": "2026-10-27T23:45:00Z"
+  },
   "sponsor_technologies": {
     "zetaris": {
       "used": true,
-      "components": ["Zetaris Lightning query engine (local Docker developer edition)", "TPCDS_DB sample dataset", "UI proxy SQL API /api/proxy/sql-editor/sqls/run-query"],
-      "where": ["src/data/zetaris.ts", "src/agent/hypotheses.ts"],
-      "how": "Every investigation step is one read-only SQL query executed by Zetaris across store, web and catalog sales, returns, items, stores, promotions and customer demographics. Each query becomes a receipt (evidence id) shown next to the claim it supports."
+      "components": [
+        "Zetaris Lightning query engine (local Docker developer edition 2.4.3.1)",
+        "SchemaStore views (federated semantic layer: whyledger.sales_cube, returns_cube, taxi_cube)",
+        "Lightning database WHYLEDGER_MART with FILESTORE parquet materialization",
+        "TPCDS_DB and NY_TAXI sample datasets",
+        "Lightning SQL API /api/proxy/sql-editor/sqls/run-query"
+      ],
+      "where": [
+        "zetaris/01-07_*.sql",
+        "scripts/zetaris-setup.ts",
+        "src/data/zetaris.ts",
+        "src/agent/datasets.ts"
+      ],
+      "how": "Zetaris federates the fragmented sources (3 retail sales channels, returns, items, customer addresses, demographics; NYC yellow taxi trips + taxi zones) into SchemaStore views, then materializes them as parquet cubes in a Lightning database. Every investigation step is one read-only SQL query on those cubes, run in parallel; each becomes a receipt (exact SQL, rows, timing, lineage) shown next to the claim it supports."
     },
     "meterless": {
       "used": true,
       "source": "https://github.com/Meterless/Meterless @ 1742dec56a66e58eef9dda2d2b865823758ca8cd (Apache-2.0)",
       "engines": {
         "H-MEM": {
-          "services": ["MemoryRetrievalService (recall with trace)", "MemoryStoreService (remember conclusions)", "TrustLedgerService (feedback + append-only audit)"],
-          "where": ["src/memory/meterless.ts", "src/agent/investigator.ts", "src/server.ts /api/feedback, /api/memory/audit"]
+          "services": [
+            "MemoryRetrievalService (recall with trace)",
+            "MemoryStoreService (remember conclusions)",
+            "TrustLedgerService (feedback + append-only audit)"
+          ],
+          "where": [
+            "src/memory/meterless.ts",
+            "src/agent/investigator.ts",
+            "src/server.ts /api/feedback, /api/memory/audit"
+          ]
         },
         "World Model": {
-          "services": ["upsertEntity", "relate", "assertFact (provenance required)", "audit"],
-          "where": ["src/agent/investigator.ts writeWorld()"],
+          "services": [
+            "upsertEntity",
+            "relate",
+            "assertFact (provenance required)",
+            "audit"
+          ],
+          "where": [
+            "src/agent/investigator.ts writeWorld()"
+          ],
           "how": "question -> tested -> hypothesis -> driven_by -> segment graph; every fact carries provenance with the backend and a sha-256 checksum of the query and its rows."
         }
       }
     },
     "nvidia": {
       "used": true,
-      "models": ["nvidia/nemotron-3.5-lightning-30b-a3b (NVIDIA NIM free endpoint)", "nvidia/nemotron-3.5-lightning:free (OpenRouter)"],
-      "where": ["src/llm/provider.ts", "src/agent/investigator.ts frameQuestion(), plan, narrate()"],
-      "how": "Nemotron frames the question, orders hypotheses using recalled memory, and writes the final answer, which must cite evidence ids or it is replaced by a deterministic template. Numbers never come from the model."
+      "models": [
+        "nvidia/nemotron-3.5-lightning-30b-a3b (NVIDIA NIM free endpoint)",
+        "nvidia/nemotron-3.5-lightning:free (OpenRouter)"
+      ],
+      "where": [
+        "src/llm/provider.ts",
+        "src/agent/framing.ts",
+        "src/agent/investigator.ts (hunch, narrate)"
+      ],
+      "how": "Nemotron frames unusual questions, forms a hypothesis-ranking hunch in parallel with the SQL tests (then compared with the evidence), and narrates the answer under a citation check. Numbers never come from the model; calls are disk-cached and time-budgeted."
     },
     "cursor": {
       "used": true,
-      "how": "Developed with Cursor's agent; see docs/CURSOR.md."
+      "how": "Developed in Cursor with Cursor-based coding agents directed by the team member; see docs/CURSOR.md."
     }
   },
   "pre_existing_components": [
     "Meterless H-MEM and World Model reference implementations (Apache-2.0), vendored by npm run setup",
     "DuckDB (local development fallback only)",
-    "TPC-DS schema / Zetaris TPCDS_DB sample data"
+    "TPC-DS schema / Zetaris TPCDS_DB and NY_TAXI sample data"
   ],
-  "stack": ["TypeScript", "Node.js 20", "tsx", "Server-sent events web UI", "DuckDB (dev only)"]
+  "stack": [
+    "TypeScript",
+    "Node.js 20",
+    "tsx",
+    "Server-sent events web UI",
+    "DuckDB (dev only)"
+  ],
+  "datasets": [
+    "Zetaris TPCDS_DB (retail, 3 channels)",
+    "Zetaris NY_TAXI (NYC TLC yellow taxi 2024-2025 + taxi zones)"
+  ]
 }

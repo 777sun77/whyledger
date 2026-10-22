@@ -2,127 +2,143 @@ import { createHash } from "node:crypto";
 import type { SqlBackend } from "../data/backend.ts";
 import { chat, llmAvailable, llmLabel, parseJson } from "../llm/provider.ts";
 import type { Memory } from "../memory/meterless.ts";
-import { baselineSql, HYPOTHESES } from "./hypotheses.ts";
+import { baselineSql, DATASETS, drillSql, hypotheses } from "./datasets.ts";
+import { frameQuestion } from "./framing.ts";
 import type { Evidence, Finding, Frame, Report } from "./types.ts";
 
-const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
+export { frameQuestion };
+
+const num = (v: unknown) => (v === null || v === undefined || v === "" ? 0 : Number(v));
 const pct = (a: number, b: number) => (a === 0 ? 0 : (b - a) / Math.abs(a));
-const fmt = (n: number) => { const a = Math.abs(n), m = n < 0 ? "-" : ""; return a >= 1e6 ? `${m}$${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${m}$${(a / 1e3).toFixed(1)}k` : `${m}$${a.toFixed(0)}`; };
+export const fmtU = (n: number, unit: "$" | "#" = "$") => {
+  const a = Math.abs(n), m = n < 0 ? "-" : "", cur = unit === "$" ? "$" : "";
+  const s = a >= 1e6 ? `${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}k` : `${a.toFixed(0)}`;
+  return `${m}${cur}${s}`;
+};
 const sgn = (n: number) => (n >= 0 ? "+" : "");
 
-export type StepListener = (step: string, detail: string) => void;
-
-/** Turn a free-form question into a structured frame (LLM if available, regex otherwise). */
-export async function frameQuestion(question: string): Promise<Frame> {
-  const q = question.toLowerCase();
-  const years = [...q.matchAll(/\b(199[8-9]|200[0-3])\b/g)].map((m) => Number(m[1]));
-  const quarters = [...q.matchAll(/\bq([1-4])\b/g)].map((m) => Number(m[1]));
-  const metric: Frame["metric"] = /web|online/.test(q) ? "web_revenue" : /catalog/.test(q) ? "catalog_revenue" : "store_revenue";
-  const fallback: Frame = {
-    question,
-    metric,
-    from: { year: years[0] ?? 2001, qoy: quarters[0] },
-    to: { year: years[1] ?? (years[0] ? years[0] + 1 : 2002), qoy: quarters[1] ?? quarters[0] },
-  };
-  const states = q.match(/\b(in|for) ([a-z]{2})\b/);
-  if (states) fallback.scope = { state: states[2].toUpperCase() };
-  if (!llmAvailable()) return fallback;
-  const reply = await chat([
-    { role: "system", content: "You convert analyst questions into JSON frames. Reply with JSON only." },
-    {
-      role: "user",
-      content: `Question: ${question}\nSchema: {"metric":"store_revenue|web_revenue|catalog_revenue","from":{"year":1998-2003,"qoy":1-4 or null},"to":{"year":..,"qoy":..},"scope":{"state":"two-letter or null","category":"Books|Children|Electronics|Home|Jewelry|Men|Music|Shoes|Sports|Women or null"}}\n"from" is the earlier/baseline period.`,
-    },
-  ], { maxTokens: 300 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
-  const j = parseJson<Partial<Frame>>(reply);
-  if (!j?.from?.year || !j?.to?.year) return fallback;
-  const clean = (p: any) => ({ year: Number(p.year), qoy: p.qoy ? Number(p.qoy) : undefined });
-  const scope = j.scope ? Object.fromEntries(Object.entries(j.scope).filter(([, v]) => v)) : undefined;
-  return { question, metric: (j.metric as Frame["metric"]) ?? metric, from: clean(j.from), to: clean(j.to), scope: scope && Object.keys(scope).length ? scope : undefined };
-}
+export type StepListener = (step: string, detail: string, data?: unknown) => void;
 
 export async function investigate(question: string, backend: SqlBackend, mem: Memory, onStep: StepListener = () => {}): Promise<Report> {
+  const t0 = Date.now();
   const steps: Report["steps"] = [];
-  const step = (s: string, d: string) => { steps.push({ at: new Date().toISOString(), step: s, detail: d }); onStep(s, d); };
+  const timings: Record<string, number> = {};
+  const step = (s: string, d: string, data?: unknown) => { steps.push({ at: new Date().toISOString(), ms: Date.now() - t0, step: s, detail: d }); onStep(s, d, data); };
+  const timed = async <T>(k: string, p: Promise<T>) => { const s = Date.now(); try { return await p; } finally { timings[k] = Date.now() - s; } };
   const evidence: Evidence[] = [];
   const runId = `run-${Date.now()}`;
 
-  const record = async (hypothesis: string, sql: string) => {
+  // 1. Frame (rules first, Nemotron if needed)
+  const frame = await timed("frame", frameQuestion(question));
+  const ds = DATASETS[frame.dataset];
+  const metric = ds.metrics[frame.metric] ?? ds.metrics[ds.defaultMetric];
+  frame.metric = Object.keys(ds.metrics).find((k) => ds.metrics[k] === metric)!;
+  const unit = metric.unit;
+  const fmt = (n: number) => fmtU(n, unit);
+  const label = ds.periodLabel;
+  const scopeTxt = Object.entries(frame.scope).map(([k, v]) => `${k}=${v}`).join(", ");
+  step("frame", `${ds.name}: ${frame.channel ? frame.channel + " " : ""}${metric.label}, ${label(frame.from)} -> ${label(frame.to)}${scopeTxt ? ` | filter ${scopeTxt}` : ""} (${frame.framedBy})`, frame);
+
+  const record = async (hypothesis: string, title: string, sql: string) => {
+    const s = Date.now();
     const r = await backend.run(sql);
-    const ev: Evidence = { id: `ev-${evidence.length + 1}`, hypothesis, sql, backend: backend.name, ranAt: new Date().toISOString(), ms: r.ms, rows: r.rows };
-    evidence.push(ev);
+    const ev: Evidence = { id: "", hypothesis, title, sql, backend: backend.name, lineage: ds.lineage, ranAt: new Date().toISOString(), ms: Date.now() - s, rows: r.rows };
+    ev.id = `ev-${evidence.push(ev)}`;
     return ev;
   };
 
-  // 1. Frame
-  const frame = await frameQuestion(question);
-  const label = (p: Frame["from"]) => `${p.year}${p.qoy ? ` Q${p.qoy}` : ""}`;
-  step("frame", `${frame.metric} ${label(frame.from)} -> ${label(frame.to)}${frame.scope ? ` scope ${JSON.stringify(frame.scope)}` : ""}`);
-
-  // 2. Recall (Meterless H-MEM): what did earlier investigations / analysts say?
+  // 2. Recall (Meterless H-MEM)
   const recall = mem.hmem.query(question, { threshold: 0.15, topN: 5 });
   const recalled = recall.memories.map((m: any) => ({ id: m.memory.id, content: m.memory.content, relevance: m.relevance }));
-  step("recall", recalled.length ? `${recalled.length} prior memories (H-MEM ${recall.trace?.strategy ?? "hybrid"})` : "no prior memory on this question");
+  step("recall", recalled.length ? `${recalled.length} related memories (H-MEM ${recall.trace?.strategy ?? "hybrid"})` : "no prior memory on this question", recalled);
 
-  // 3. Establish the fact to explain
-  const base = await record("baseline", baselineSql(frame, backend));
-  const bFrom = num(base.rows.find((r) => r.period === "from")?.revenue);
-  const bTo = num(base.rows.find((r) => r.period === "to")?.revenue);
-  const delta = bTo - bFrom;
-  step("baseline", `${fmt(bFrom)} -> ${fmt(bTo)} (${sgn(delta)}${fmt(delta)}, ${sgn(delta)}${(pct(bFrom, bTo) * 100).toFixed(1)}%) [${base.id}]`);
+  // 3. The fact to explain
+  const base = await timed("baseline", record("baseline", "The change to explain", baselineSql(frame, ds, backend)));
+  const bFrom = num(base.rows[0]?.v_from), bTo = num(base.rows[0]?.v_to), delta = bTo - bFrom;
+  step("baseline", `${metric.label} ${fmt(bFrom)} -> ${fmt(bTo)} (${sgn(delta)}${fmt(delta)}, ${sgn(delta)}${(pct(bFrom, bTo) * 100).toFixed(1)}%) [${base.id}]`, base);
+  if (bFrom === 0 && bTo === 0) throw new Error(`No data for ${label(frame.from)} / ${label(frame.to)}${scopeTxt ? ` with ${scopeTxt}` : ""}. Try: ${ds.examples[0]}`);
 
-  // 4. Plan: which hypotheses first (LLM may reorder using recalled memory; all are tested)
-  let order = HYPOTHESES.map((h) => h.id);
-  if (llmAvailable()) {
-    const reply = await chat([
-      { role: "system", content: "You are a careful business analyst planning an investigation. Reply with JSON only." },
-      { role: "user", content: `Explain: ${question}\nObserved: revenue ${fmt(bFrom)} -> ${fmt(bTo)}.\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${HYPOTHESES.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids most-promising first],"why":"one sentence"}` },
-    ], { maxTokens: 250 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
-    const j = parseJson<{ order: string[]; why: string }>(reply);
-    if (j?.order?.length) {
-      order = [...new Set([...j.order.filter((id) => order.includes(id)), ...order])];
-      step("plan", `${order.join(" > ")} — ${j.why ?? ""}`);
-    } else step("plan", order.join(" > "));
-  } else step("plan", `${order.join(" > ")} (default order, offline)`);
+  // 4. Nemotron's hunch (runs in parallel with the evidence; compared afterwards)
+  const hyps = hypotheses(frame, ds, backend);
+  const hunchP = llmAvailable()
+    ? chat([
+        { role: "system", content: "You are a careful business analyst. Reply with JSON only." },
+        { role: "user", content: `Explain: ${question}\nObserved: ${metric.label} ${fmt(bFrom)} -> ${fmt(bTo)}.\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${hyps.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids, most likely first],"why":"one sentence"}` },
+      ], { maxTokens: 250 }).then((r) => parseJson<{ order: string[]; why: string }>(r)).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; })
+    : Promise.resolve(null);
+  step("plan", `testing ${hyps.length} hypotheses in parallel on ${backend.name}${llmAvailable() ? " while Nemotron forms a hunch" : ""}`, hyps.map((h) => ({ id: h.id, title: h.title, question: h.question })));
 
-  // 5. Test every hypothesis with a query; score it from the numbers
-  const findings: Finding[] = [];
-  for (const id of order) {
-    const h = HYPOTHESES.find((x) => x.id === id)!;
-    let ev: Evidence;
+  // 5. Test every hypothesis in parallel; numbers come only from SQL
+  const tTests = Date.now();
+  const findings = (await Promise.all(hyps.map(async (h) => {
     try {
-      ev = await record(h.id, h.sql(frame, backend));
+      const ev = await record(h.id, h.title, h.sql);
+      const f = score(h.id, h.title, ev, delta, bFrom, unit);
+      step("test", `${h.id}: ${f.verdict} — ${f.summary} [${ev.id}, ${ev.ms} ms]`, { finding: f, evidence: ev });
+      return f;
     } catch (e) {
       step("test", `${h.id}: query failed (${(e as Error).message.slice(0, 120)})`);
-      continue;
+      return null;
     }
-    const f = score(h.id, h.title, ev, delta, bFrom);
-    findings.push(f);
-    step("test", `${h.id}: ${f.verdict} — ${f.summary} [${ev.id}]`);
-  }
+  }))).filter((f): f is Finding => !!f);
+  timings.tests = Date.now() - tTests;
   findings.sort((a, b) => rank(b) - rank(a));
 
-  // 6. Write the evidence graph (Meterless World Model) with SQL provenance
+  // 6. Connect findings: drill into the strongest segment by the next dimension
+  const segF = findings.filter((f) => f.verdict === "supported" && ds.dims.some((d) => d.id === f.hypothesis));
+  if (segF.length >= 1) {
+    const A = segF[0];
+    const by = (segF[1]?.hypothesis ?? ds.dims.find((d) => d.id !== A.hypothesis && !(d.id in frame.scope))?.id)!;
+    const lead = A.drivers[0];
+    if (lead && by) {
+      try {
+        const ev = await timed("drill", record(`drill:${A.hypothesis}>${by}`, `Inside ${lead.segment}`, drillSql(frame, ds, backend, { dim: A.hypothesis, value: lead.segment }, by)));
+        const leadDelta = lead.delta;
+        const g = score(by, `Inside ${lead.segment}, by ${by}`, ev, leadDelta, lead.from, unit);
+        const conn: Finding = { ...g, hypothesis: `drill:${A.hypothesis}>${by}`, title: `Connecting: ${lead.segment} × ${by}`, verdict: "connection", explains: g.explains,
+          summary: `${lead.segment} (${sgn(leadDelta)}${fmt(leadDelta)}) broken down by ${by}: ${g.verdict === "rejected" ? "spread evenly — the two drivers are independent" : g.summary}` };
+        findings.splice(findings.indexOf(A) + 1, 0, conn);
+        step("connect", `${conn.summary} [${ev.id}]`, { finding: conn, evidence: ev });
+      } catch (e) {
+        step("connect", `drill-down failed (${(e as Error).message.slice(0, 100)})`);
+      }
+    }
+  }
+
+  // 7. Compare Nemotron's hunch with the evidence
+  const hunchBudget = Number(process.env.WHYLEDGER_HUNCH_WAIT_MS ?? 30000);
+  const hunchRaw = await timed("hunch_wait", Promise.race([hunchP, new Promise<null>((r) => setTimeout(() => r(null), hunchBudget).unref())]));
+  if (!hunchRaw && llmAvailable()) step("hunch", `Nemotron's hunch did not arrive within ${hunchBudget / 1000}s; continuing on evidence alone`);
+  let hunch: Report["hunch"];
+  if (hunchRaw?.order?.length) {
+    const best = findings.find((f) => f.verdict === "supported");
+    const matched = !!best && hunchRaw.order[0] === best.hypothesis;
+    hunch = { order: hunchRaw.order, why: hunchRaw.why ?? "", matched };
+    step("hunch", `Nemotron guessed "${hunchRaw.order[0]}" first — evidence ${matched ? "agrees" : `points to "${best?.hypothesis ?? "none"}"`}`, hunch);
+  }
+
+  // 8. Evidence graph (Meterless World Model) with SQL provenance
   await writeWorld(mem, frame, findings, evidence, runId, backend.name);
   step("world-model", `${findings.length} findings + ${evidence.length} receipts written with provenance`);
 
-  // 7. Answer: model narrates ONLY the computed findings and must cite evidence ids
-  const { text, mode } = await narrate(frame, { bFrom, bTo, delta }, findings, recalled);
+  // 9. Answer (Nemotron narrates only computed findings, must cite receipts)
+  const { text, mode } = await timed("narrate", narrate(frame, metric.label, unit, { bFrom, bTo, delta }, findings, recalled));
   step("answer", mode);
 
-  // 8. Remember the conclusion for next time (H-MEM), so follow-ups compound
-  const top = findings.filter((f) => f.verdict !== "rejected").slice(0, 2);
+  // 10. Remember
+  const top = findings.filter((f) => f.verdict === "supported" || f.verdict === "connection").slice(0, 3);
   const remembered = mem.hmem.add({
-    content: `Investigation "${question}": ${frame.metric} ${label(frame.from)}->${label(frame.to)} changed ${sgn(delta)}${fmt(delta)}. Main drivers: ${top.map((f) => `${f.title} (${f.summary})`).join("; ") || "none supported"}.`,
+    content: `Investigation "${question}": ${metric.label} ${label(frame.from)}->${label(frame.to)}${scopeTxt ? ` (${scopeTxt})` : ""} changed ${sgn(delta)}${fmt(delta)}. Drivers: ${top.map((f) => `${f.title}: ${f.summary}`).join("; ") || "none supported"}.`,
     type: "factual",
     source: `whyledger:${runId}`,
   });
   step("remember", `conclusion stored in H-MEM as ${remembered.id}`);
+  timings.total = Date.now() - t0;
 
   return {
-    frame,
+    frame, metricLabel: metric.label, unit,
     baseline: { from: bFrom, to: bTo, delta, pct: pct(bFrom, bTo), evidence: base.id },
-    findings, answer: text, answerMode: mode, recalled, evidence, backend: backend.name, steps, memoryId: remembered.id,
+    findings, answer: text, answerMode: mode, hunch, recalled, evidence, backend: backend.name, steps, timings, memoryId: remembered.id,
   };
 }
 
@@ -139,14 +155,17 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
  * for. Raw $ contributions (which can exceed the net change when other
  * segments offset) are reported separately as dollars, never as a % > 100.
  */
-export function score(id: string, title: string, ev: Evidence, delta: number, baseFrom: number): Finding {
+export function score(id: string, title: string, ev: Evidence, delta: number, baseFrom: number, unit: "$" | "#" = "$"): Finding {
+  const fmt = (n: number) => fmtU(n, unit);
   const base = { hypothesis: id, title, evidence: [ev.id] };
   const dir = Math.sign(delta) || -1;
   const tiny = baseFrom !== 0 && Math.abs(delta / baseFrom) < 0.002;
+  // Below ~1% the net change is small next to normal segment churn: never call it "supported".
+  const small = baseFrom !== 0 && Math.abs(delta / baseFrom) < 0.01;
+  const cap = (v: Finding["verdict"]): Finding["verdict"] => (small && v === "supported" ? "partial" : v);
   if (id === "price_volume") {
-    const a = ev.rows.find((r) => r.period === "from") ?? {};
-    const b = ev.rows.find((r) => r.period === "to") ?? {};
-    const uA = num(a.units), uB = num(b.units), rA = num(a.revenue), rB = num(b.revenue);
+    const r0 = ev.rows[0] ?? {};
+    const uA = num(r0.u_from), uB = num(r0.u_to), rA = num(r0.v_from), rB = num(r0.v_to);
     const pA = uA ? rA / uA : 0, pB = uB ? rB / uB : 0;
     const volEffect = (uB - uA) * pA; // revenue change from units at old price
     const priceEffect = (pB - pA) * uB; // revenue change from price at new units (vol + price = delta exactly)
@@ -158,8 +177,8 @@ export function score(id: string, title: string, ev: Evidence, delta: number, ba
     return {
       ...base,
       explains: sameDir ? Math.max(volShare, priceShare) : 0,
-      verdict: tiny ? "rejected" : sameDir && Math.max(volShare, priceShare) >= 0.7 ? "supported" : "partial",
-      summary: `units ${sgn(uB - uA)}${(pct(uA, uB) * 100).toFixed(1)}%, revenue/unit ${sgn(pB - pA)}${(pct(pA, pB) * 100).toFixed(1)}% — volume effect ${sgn(volEffect)}${fmt(volEffect)}, price effect ${sgn(priceEffect)}${fmt(priceEffect)}: mostly a ${main} story`,
+      verdict: cap(tiny ? "rejected" : sameDir && Math.max(volShare, priceShare) >= 0.7 ? "supported" : "partial"),
+      summary: `volume ${sgn(uB - uA)}${(pct(uA, uB) * 100).toFixed(1)}%, value per unit ${sgn(pB - pA)}${(pct(pA, pB) * 100).toFixed(1)}% — volume effect ${sgn(volEffect)}${fmt(volEffect)}, price effect ${sgn(priceEffect)}${fmt(priceEffect)}: mostly a ${main} story`,
       drivers: [
         { segment: "volume (units)", from: uA, to: uB, delta: volEffect, shareOfDelta: volShare * Math.sign(volEffect) * dir },
         { segment: "price (revenue/unit)", from: pA, to: pB, delta: priceEffect, shareOfDelta: priceShare * Math.sign(priceEffect) * dir },
@@ -180,11 +199,23 @@ export function score(id: string, title: string, ev: Evidence, delta: number, ba
     return {
       ...base,
       explains: offset,
-      verdict: tiny ? "rejected" : offset >= 0.5 ? "supported" : offset >= 0.2 ? "partial" : "rejected",
+      verdict: cap(tiny ? "rejected" : offsetAmt > 3 * Math.abs(delta) ? "partial" : offset >= 0.5 ? "supported" : offset >= 0.2 ? "partial" : "rejected"),
       summary: opposite.length
         ? `${opposite.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} moved the opposite way while this channel went ${sgn(delta)}${fmt(delta)}${offset >= 1 ? " — fully offset" : ` — offsets ${(offset * 100).toFixed(0)}%`} (co-movement, not proof of switching)`
         : `other channels moved the same direction (${others.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")}) — not a channel shift`,
       drivers: segs,
+    };
+  }
+  if (id === "fees") {
+    const r = segs[0] ?? { from: 0, to: 0, delta: 0, segment: "fees", shareOfDelta: 0 };
+    const helps = Math.sign(r.delta) === dir;
+    const share = helps ? clamp01(Math.abs(r.delta) / (Math.abs(delta) || 1)) : 0;
+    r.shareOfDelta = share;
+    return {
+      ...base, explains: share,
+      verdict: cap(tiny ? "rejected" : share >= 0.3 ? "supported" : share >= 0.1 ? "partial" : "rejected"),
+      summary: `${r.segment} ${fmt(r.from)} -> ${fmt(r.to)} (${sgn(r.delta)}${fmt(r.delta)})${helps ? `, ${(share * 100).toFixed(0)}% of the change` : ", moved the other way"}`,
+      drivers: [r],
     };
   }
   if (id === "returns") {
@@ -196,7 +227,7 @@ export function score(id: string, title: string, ev: Evidence, delta: number, ba
     return {
       ...base,
       explains: share,
-      verdict: tiny ? "rejected" : share >= 0.3 ? "supported" : share >= 0.1 ? "partial" : "rejected",
+      verdict: cap(tiny ? "rejected" : share >= 0.3 ? "supported" : share >= 0.1 ? "partial" : "rejected"),
       summary: `returns ${fmt(r.from)} -> ${fmt(r.to)} (${sgn(r.delta)}${fmt(r.delta)})${helps ? `, up to ${(share * 100).toFixed(0)}% of the change` : ", moved the wrong way to explain it"}`,
       drivers: [r],
     };
@@ -217,7 +248,7 @@ export function score(id: string, title: string, ev: Evidence, delta: number, ba
   const leadOver = lead ? lead.shareOfDelta / Math.max(lead.from / totalFrom, 1e-9) : 0;
   const offsetAmt = against.reduce((a, s) => a + Math.abs(s.delta), 0);
   const verdict: Finding["verdict"] =
-    tiny || segs.length < 2 ? "rejected" : topShare >= 0.5 && leadOver >= 1.5 ? "supported" : topShare >= 0.35 && leadOver >= 1.2 ? "partial" : "rejected";
+    cap(tiny || segs.length < 2 ? "rejected" : topShare >= 0.5 && leadOver >= 1.5 ? "supported" : topShare >= 0.35 && leadOver >= 1.2 ? "partial" : "rejected");
   const ordered = [...withDir, ...against.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))];
   return {
     ...base,
@@ -240,7 +271,7 @@ async function writeWorld(mem: Memory, frame: Frame, findings: Finding[], eviden
     url: ev ? `sql:${backendName}` : undefined,
     checksum: ev ? createHash("sha256").update(ev.sql + JSON.stringify(ev.rows)).digest("hex").slice(0, 16) : undefined,
   });
-  const q = await mem.world.upsertEntity({ type: "question", externalKey: { system: "whyledger", id: runId }, attrs: { text: frame.question, metric: frame.metric }, source: src() });
+  const q = await mem.world.upsertEntity({ type: "question", externalKey: { system: "whyledger", id: runId }, attrs: { text: frame.question, dataset: frame.dataset, metric: frame.metric, scope: frame.scope }, source: src() });
   for (const f of findings) {
     const ev = evidence.find((e) => e.id === f.evidence[0]);
     const h = await mem.world.upsertEntity({ type: "hypothesis", externalKey: { system: "whyledger", id: `${runId}:${f.hypothesis}` }, attrs: { name: f.title }, source: src(ev) });
@@ -253,24 +284,32 @@ async function writeWorld(mem: Memory, frame: Frame, findings: Finding[], eviden
   }
 }
 
-async function narrate(frame: Frame, b: { bFrom: number; bTo: number; delta: number }, findings: Finding[], recalled: Report["recalled"]) {
+async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { bFrom: number; bTo: number; delta: number }, findings: Finding[], recalled: Report["recalled"]) {
+  const fmt = (n: number) => fmtU(n, unit);
   const facts = findings.map((f) => ({ id: f.hypothesis, verdict: f.verdict, summary: f.summary, evidence: f.evidence }));
   const template = () => {
     const sup = findings.filter((f) => f.verdict !== "rejected");
     const rej = findings.filter((f) => f.verdict === "rejected");
-    const lines = [
-      `${frame.metric.replace("_", " ")} went ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}).`,
+    return [
+      `${metricLabel[0].toUpperCase() + metricLabel.slice(1)} went ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1].`,
       sup.length ? "What explains it:" : "No single hypothesis explains it; the change is broad-based.",
       ...sup.slice(0, 4).map((f, i) => `${i + 1}. ${f.title}: ${f.summary} [${f.evidence.join(", ")}]`),
       rej.length ? `Ruled out: ${rej.map((f) => `${f.title} [${f.evidence.join(", ")}]`).join("; ")}.` : "",
-    ];
-    return lines.filter(Boolean).join("\n");
+    ].filter(Boolean).join("\n");
   };
   if (!llmAvailable()) return { text: template(), mode: llmLabel() };
-  const reply = await chat([
-    { role: "system", content: "You explain business metric changes to a store operations manager. Use ONLY the findings given. Every claim must cite its evidence id in [brackets]. Say what was ruled out. Be concise: <=150 words, plain language, end with one recommended next check." },
-    { role: "user", content: `Question: ${frame.question}\nChange: ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
-  ], { maxTokens: 600 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
-  if (!reply || !/\[ev-\d+/.test(reply)) return { text: template(), mode: `${llmLabel()} failed citation check -> template` };
+  const budget = Number(process.env.WHYLEDGER_NARRATE_WAIT_MS ?? 60000);
+  const reply = await Promise.race([chat([
+    { role: "system", content: "You explain metric changes to a busy operations manager. Use ONLY the findings given; never invent numbers. Cite evidence ids in [brackets] after each claim. Mention what was ruled out. <=130 words, plain language, then one line 'Next check:' with a concrete follow-up." },
+    { role: "user", content: `Question: ${frame.question}\nChange: ${metricLabel} ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
+  ], { maxTokens: 500 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
+    new Promise<null>((r) => setTimeout(() => r(null), budget).unref())]);
+  if (process.env.WHYLEDGER_DEBUG) console.warn(`[narrate raw] ${JSON.stringify(reply)}`);
+  if (!reply) return { text: template(), mode: `${llmLabel()} unavailable/timed out -> template` };
+  if (!/ev-\d+/.test(reply)) return { text: template(), mode: `${llmLabel()} cited no receipts -> template` };
+  // every cited id must exist
+  const ids = new Set(findings.flatMap((f) => f.evidence).concat("ev-1"));
+  const cited = [...reply.matchAll(/ev-\d+/g)].map((m) => m[0]);
+  if (cited.some((c) => !ids.has(c))) return { text: template(), mode: `${llmLabel()} cited a missing receipt -> template` };
   return { text: reply, mode: llmLabel() };
 }

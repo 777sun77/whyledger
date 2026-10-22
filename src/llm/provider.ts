@@ -4,7 +4,17 @@
 //  - meterless:  Meterless Runtime / Nightshift hotspot (local, unmetered)
 // With no key the agent still runs: planning and narration fall back to
 // deterministic templates, and every output is labeled with its mode.
+import fs from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
 import { config, env } from "../config.ts";
+
+// Disk cache: identical prompts (same model) are answered instantly. Keeps
+// demos fast and stays well inside free-tier rate limits.
+const cacheFile = path.join(config.stateDir, "llm-cache.json");
+let cache: Record<string, string> | undefined;
+const loadCache = () => (cache ??= fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, "utf8")) : {});
+export const llmStats = { calls: 0, cacheHits: 0, ms: 0 };
 
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 
@@ -30,12 +40,16 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
   if (!llmAvailable()) return null;
   const p = PROVIDERS[config.llm.provider as keyof typeof PROVIDERS];
   const key = env(p.key, config.llm.provider === "meterless" ? "rt-local" : undefined);
+  const model = env("WHYLEDGER_MODEL", p.model)!;
+  const ck = createHash("sha256").update(JSON.stringify([model, messages, opts.maxTokens ?? 900])).digest("hex");
+  if (env("WHYLEDGER_LLM_CACHE", "1") === "1" && loadCache()[ck] !== undefined) { llmStats.cacheHits++; return cache![ck]; }
+  const started = Date.now();
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch(`${p.base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: env("WHYLEDGER_MODEL", p.model),
+        model,
         messages,
         // Nemotron reasons before answering; leave room for it
         max_tokens: (opts.maxTokens ?? 900) + 2500,
@@ -49,7 +63,10 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
     if (!r.ok) throw new Error(`LLM ${config.llm.provider} HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const j: any = await r.json();
     const msg = j?.choices?.[0]?.message;
-    return (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const text = (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    llmStats.calls++; llmStats.ms += Date.now() - started;
+    if (text) { loadCache()[ck] = text; fs.mkdirSync(config.stateDir, { recursive: true }); fs.writeFileSync(cacheFile, JSON.stringify(cache)); }
+    return text;
   }
   throw new Error("LLM rate-limited after 3 attempts");
 }

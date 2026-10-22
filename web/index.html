@@ -1,41 +1,104 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhyLedger — every answer has a receipt</title>
+<title>WhyLedger: every answer has a receipt</title>
 <style>
-:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8a93a6;--ok:#3ecf8e;--part:#f5b84b;--no:#6b7280;--acc:#76b900}
-*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-header{padding:18px 28px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center}
-header h1{font-size:18px;margin:0}header .tag{color:var(--mut);font-size:13px}#status{margin-left:auto;font-size:12px;color:var(--mut)}
-main{max-width:1100px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr 340px;gap:20px}
-form{grid-column:1/-1;display:flex;gap:8px}input{flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:15px}
-button{padding:12px 18px;border-radius:10px;border:0;background:var(--acc);color:#000;font-weight:600;cursor:pointer}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
-.answer{white-space:pre-wrap;font-size:16px}.mut{color:var(--mut);font-size:12px}
-.f{border-left:4px solid var(--no);padding-left:12px;margin:10px 0}.f.supported{border-color:var(--ok)}.f.partial{border-color:var(--part)}
-.badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--line);margin-left:6px;text-transform:uppercase}
-.ev{cursor:pointer;color:var(--acc);text-decoration:underline}pre{white-space:pre-wrap;background:#0b0d11;padding:10px;border-radius:8px;font-size:12px;overflow:auto}
-.bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px}.bar i{display:block;height:6px;background:var(--acc);border-radius:3px}
-#steps div{font-size:13px;padding:4px 0;border-bottom:1px dashed var(--line)}#steps b{color:var(--acc);font-weight:600;margin-right:6px}
+:root{--bg:#f6f7f9;--card:#fff;--line:#e5e7eb;--fg:#111827;--mut:#6b7280;--ok:#059669;--okb:#ecfdf5;--part:#d97706;--partb:#fffbeb;--no:#9ca3af;--acc:#4f46e5;--accb:#eef2ff;--conn:#7c3aed;--nv:#76b900}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
+header{background:#0f172a;color:#fff;padding:14px 28px;display:flex;align-items:center;gap:18px}
+.logo{font-weight:800;font-size:18px;letter-spacing:-.02em}.logo span{color:#a5b4fc}.tag{color:#cbd5e1;font-size:13px}
+.pills{margin-left:auto;display:flex;gap:8px}.pill{font-size:12px;padding:4px 10px;border-radius:99px;background:#1e293b;color:#e2e8f0;white-space:nowrap}.pill b{color:#86efac}.pill.warn b{color:#fcd34d}
+main{max-width:1280px;margin:0 auto;padding:20px 24px;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px}
+.ask{grid-column:1/-1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.ask form{display:flex;gap:8px}.ask input{flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--line);font-size:15px}
+button{padding:10px 16px;border-radius:10px;border:0;background:var(--acc);color:#fff;font-weight:600;cursor:pointer;font-size:14px}button.ghost{background:#f3f4f6;color:#111}
+.chips{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:12px;padding:5px 10px;border-radius:99px;background:var(--accb);color:var(--acc);cursor:pointer;border:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.big{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.big .v{font-size:28px;font-weight:800;letter-spacing:-.02em}.big .d{font-size:18px;font-weight:700}.d.neg{color:#dc2626}.d.pos{color:var(--ok)}
+.answer{white-space:pre-wrap;font-size:15px;line-height:1.6;margin-top:10px}
+.ev{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--accb);color:var(--acc);cursor:pointer;margin:0 1px;font-family:ui-monospace,monospace}
+.ev:hover{background:var(--acc);color:#fff}
+.f{border:1px solid var(--line);border-left:4px solid var(--no);border-radius:10px;padding:12px 14px;margin:10px 0;background:#fff}
+.f.supported{border-left-color:var(--ok);background:var(--okb)}.f.partial{border-left-color:var(--part);background:var(--partb)}.f.connection{border-left-color:var(--conn);background:#f5f3ff}
+.f .t{font-weight:700}.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;text-transform:uppercase;letter-spacing:.04em;background:#e5e7eb;color:#374151}
+.supported .badge{background:#a7f3d0;color:#065f46}.partial .badge{background:#fde68a;color:#92400e}.connection .badge{background:#ddd6fe;color:#5b21b6}
+.f .s{margin-top:4px;color:#374151}.bar{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px;overflow:hidden}.bar i{display:block;height:6px;background:var(--ok)}.partial .bar i{background:var(--part)}.connection .bar i{background:var(--conn)}
+.ruled{display:flex;flex-wrap:wrap;gap:8px}.ruled .r{font-size:13px;padding:6px 10px;border-radius:8px;background:#f3f4f6;color:#4b5563}
+.hunch{font-size:13px;color:#374151}.hunch b{color:var(--nv)}
+.tl{max-height:420px;overflow:auto}.tl div{display:grid;grid-template-columns:54px 82px 1fr;gap:6px;font-size:12.5px;padding:5px 0;border-bottom:1px dashed var(--line)}
+.tl .ms{color:var(--mut);font-family:ui-monospace,monospace}.tl .st{font-weight:700;color:var(--acc)}
+.mem div{font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line)}.mut{color:var(--mut);font-size:12px}
+.drawer{position:fixed;top:0;right:-760px;width:720px;max-width:96vw;height:100vh;background:#fff;box-shadow:-10px 0 30px rgba(0,0,0,.15);transition:right .25s;z-index:10;padding:22px;overflow:auto}
+.drawer.open{right:0}.drawer pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:10px;font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1px solid var(--line);padding:5px 8px;text-align:right}th{background:#f9fafb}td:first-child,th:first-child{text-align:left}
+.lineage{font-size:12px;background:#f0fdf4;color:#166534;border-radius:8px;padding:8px 10px;margin:8px 0}
+.timer{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);margin-left:10px}
+.empty{color:var(--mut);padding:30px 0;text-align:center}
 </style></head><body>
-<header><h1>WhyLedger</h1><span class="tag">Ask why a number moved. Get the answer, what was ruled out, and a receipt for every claim.</span><span id="status"></span></header>
+<header><div class="logo">Why<span>Ledger</span></div><div class="tag">Ask why a number moved. Get the answer, what was ruled out, and a receipt for every claim.</div>
+<div class="pills" id="pills"></div></header>
 <main>
-<form id="f"><input id="q" value="Why did store revenue change from 2001 Q4 to 2002 Q4?"><button>Investigate</button></form>
-<section><div id="answer" class="card"><span class="mut">Ask a question to start an investigation.</span></div><div id="findings"></div></section>
-<aside><div class="card"><div class="mut">AGENT STEPS</div><div id="steps"></div></div><div class="card"><div class="mut">RECALLED FROM MEMORY (H-MEM)</div><div id="recall" class="mut">—</div></div><div class="card" id="receipt"><div class="mut">RECEIPT</div><div class="mut">Click an evidence id to see the exact query and rows.</div></div></aside>
+<section class="ask"><form id="f"><input id="q" placeholder="Why did … change from … to …?"><button id="go">Investigate</button><span class="timer" id="timer"></span></form><div class="chips" id="chips"></div></section>
+<section>
+  <div class="card" id="answerCard"><div class="empty">Pick an example or ask your own question.</div></div>
+  <div class="card" id="explains" style="display:none"><h3>What explains it</h3><div id="findings"></div></div>
+  <div class="card" id="ruledCard" style="display:none"><h3>Ruled out (tested, not the cause)</h3><div class="ruled" id="ruled"></div></div>
+  <div class="card" id="hunchCard" style="display:none"><h3>Nemotron's hunch vs the evidence</h3><div class="hunch" id="hunch"></div></div>
+</section>
+<aside>
+  <div class="card"><h3>Agent timeline</h3><div class="tl" id="tl"><div class="mut" style="display:block">Steps appear here live.</div></div></div>
+  <div class="card mem"><h3>Memory (Meterless H-MEM)</h3><div id="recall" class="mut">Nothing recalled yet.</div><div id="ledger" class="mut" style="margin-top:8px"></div></div>
+  <div class="card"><h3>Evidence graph (Meterless World Model)</h3><div id="world" class="mut">After an investigation: question → hypotheses → driver segments, each fact with query provenance.</div></div>
+</aside>
 </main>
+<div class="drawer" id="drawer"><button class="ghost" onclick="drawer.classList.remove('open')">Close ✕</button><div id="dbody"></div></div>
 <script>
-const $=s=>document.querySelector(s);let EV={};
-fetch('/api/status').then(r=>r.json()).then(s=>$('#status').textContent=`data: ${s.backend} · model: ${s.llm}`);
-const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const link=t=>esc(t).replace(/ev-\d+/g,m=>`<span class="ev" data-ev="${m}">${m}</span>`);
-document.addEventListener('click',e=>{const fb=e.target.dataset?.fb;if(fb){fetch('/api/feedback',{method:'POST',body:JSON.stringify({memoryId:e.target.dataset.mid,kind:fb})}).then(()=>fetch('/api/memory/audit?id='+e.target.dataset.mid)).then(r=>r.json()).then(a=>$('#fbmsg').textContent=`H-MEM ledger: ${a.history.map(h=>h.action).join(' → ')}`);return}const id=e.target.dataset?.ev;if(!id||!EV[id])return;const v=EV[id];
-$('#receipt').innerHTML=`<div class="mut">RECEIPT ${id} · ${esc(v.hypothesis)} · ${v.ms} ms · ${esc(v.backend)}</div><pre>${esc(v.sql)}</pre><pre>${esc(JSON.stringify(v.rows.slice(0,12),null,1))}</pre>`});
-$('#f').onsubmit=e=>{e.preventDefault();$('#steps').innerHTML='';$('#findings').innerHTML='';$('#answer').innerHTML='<span class="mut">Investigating…</span>';
-const es=new EventSource('/api/investigate?q='+encodeURIComponent($('#q').value));
-es.addEventListener('step',m=>{const d=JSON.parse(m.data);$('#steps').insertAdjacentHTML('beforeend',`<div><b>${esc(d.step)}</b>${link(d.detail)}</div>`)});
-es.addEventListener('report',m=>{es.close();const r=JSON.parse(m.data);EV=Object.fromEntries(r.evidence.map(x=>[x.id,x]));
-$('#answer').innerHTML=`<div class="answer">${link(r.answer)}</div><div class="mut" style="margin-top:8px">narration: ${esc(r.answerMode)} · memory ${esc(r.memoryId)}</div><div style="margin-top:10px"><button data-fb="helpful" data-mid="${esc(r.memoryId)}">Helpful</button> <button data-fb="unhelpful" data-mid="${esc(r.memoryId)}" style="background:#333;color:#eee">Not helpful</button> <span id="fbmsg" class="mut"></span></div>`;
-$('#recall').innerHTML=r.recalled.length?r.recalled.map(x=>`<div>• ${esc(x.content)}</div>`).join(''):'nothing yet — ask again and it will remember';
-$('#findings').innerHTML=r.findings.map(f=>`<div class="card f ${f.verdict}"><b>${esc(f.title)}</b><span class="badge">${f.verdict}</span><div>${link(f.summary)} [${f.evidence.map(link).join(', ')}]</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,f.explains*100))}%"></i></div></div>`).join('')});
-es.onerror=()=>{es.close()}};
+const $=s=>document.querySelector(s), drawer=$('#drawer'); let EV={}, R=null, t0=0, tick;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const link=t=>esc(t).replace(/\bev-\d+\b/g,m=>`<span class="ev" data-ev="${m}">${m}</span>`);
+const fmt=(n,u)=>{const a=Math.abs(n),s=a>=1e6?(a/1e6).toFixed(2)+'M':a>=1e3?(a/1e3).toFixed(1)+'k':a.toFixed(0);return (n<0?'-':'')+(u==='$'?'$':'')+s};
+fetch('/api/status').then(r=>r.json()).then(s=>{
+  $('#pills').innerHTML=`<span class="pill ${s.zetaris?'':'warn'}">Data <b>${esc(s.backend)}</b></span><span class="pill">Memory <b>Meterless H-MEM + World Model</b></span><span class="pill">Model <b>${esc(s.llm)}</b></span>`;
+  $('#chips').innerHTML=s.examples.map(e=>`<button class="chip" type="button">${esc(e)}</button>`).join('');
+  $('#q').value=s.examples[0];
+});
+document.addEventListener('click',e=>{
+  if(e.target.classList.contains('chip')){$('#q').value=e.target.textContent;run();return}
+  const fb=e.target.dataset?.fb; if(fb){feedback(fb);return}
+  const id=e.target.dataset?.ev; if(id&&EV[id])openEv(id);
+});
+function openEv(id){const v=EV[id];const cols=v.rows.length?Object.keys(v.rows[0]):[];
+  $('#dbody').innerHTML=`<h2 style="margin:12px 0 4px">${esc(id)} · ${esc(v.title)}</h2><div class="mut">ran on <b>${esc(v.backend)}</b> in ${v.ms} ms · ${esc(new Date(v.ranAt).toLocaleString())}</div>
+  <div class="lineage"><b>Lineage</b> · ${esc(v.lineage)}</div><h3 style="margin-top:14px">Exact SQL sent to ${esc(v.backend.split(" (")[0])}</h3><pre>${esc(v.sql)}</pre>
+  <h3>Rows returned (${v.rows.length})</h3><table><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>${v.rows.slice(0,60).map(r=>`<tr>${cols.map(c=>`<td>${typeof r[c]==='number'?r[c].toLocaleString(undefined,{maximumFractionDigits:2}):esc(r[c])}</td>`).join('')}</tr>`).join('')}</table>`;
+  drawer.classList.add('open')}
+function step(d){if(t0&&$('#tl .mut'))$('#tl').innerHTML='';$('#tl').insertAdjacentHTML('beforeend',`<div><span class="ms">${(d.ms/1000).toFixed(1)}s</span><span class="st">${esc(d.step)}</span><span>${link(d.detail)}</span></div>`);$('#tl').scrollTop=1e9;
+  if(d.data&&d.data.evidence){EV[d.data.evidence.id]=d.data.evidence}
+  if(d.step==='baseline'&&d.data){EV[d.data.id]=d.data}}
+function findingHtml(f){return `<div class="f ${f.verdict}"><span class="t">${esc(f.title)}</span><span class="badge">${f.verdict==='connection'?'connected':f.verdict}</span>
+  <div class="s">${link(f.summary)} ${f.evidence.map(x=>`<span class="ev" data-ev="${x}">${x}</span>`).join('')}</div>${f.verdict==='rejected'?'':`<div class="bar"><i style="width:${Math.round(Math.max(0,Math.min(1,f.explains))*100)}%"></i></div><div class="mut">accounts for ${Math.round(f.explains*100)}% of the movement in that direction</div>`}</div>`}
+function run(){const q=$('#q').value.trim();if(!q)return;EV={};R=null;t0=Date.now();$('#tl').innerHTML='';
+  ['#explains','#ruledCard','#hunchCard'].forEach(s=>$(s).style.display='none');$('#answerCard').innerHTML='<div class="empty">Investigating on Zetaris…</div>';$('#ledger').textContent='';
+  clearInterval(tick);tick=setInterval(()=>$('#timer').textContent=((Date.now()-t0)/1000).toFixed(1)+'s',100);
+  const es=new EventSource('/api/investigate?q='+encodeURIComponent(q));
+  es.addEventListener('step',m=>step(JSON.parse(m.data)));
+  es.addEventListener('error',m=>{if(m.data){$('#answerCard').innerHTML=`<div class="empty">⚠ ${esc(JSON.parse(m.data).error)}</div>`;clearInterval(tick)}es.close()});
+  es.addEventListener('report',m=>{es.close();clearInterval(tick);R=JSON.parse(m.data);render(R)})}
+function render(r){EV=Object.fromEntries(r.evidence.map(x=>[x.id,x]));const u=r.unit,b=r.baseline;
+  const lab=p=>p.month?`${p.year}-${String(p.month).padStart(2,'0')}`:`${p.year}${p.qoy?' Q'+p.qoy:''}`;
+  const scope=Object.entries(r.frame.scope).map(([k,v])=>`${k}: ${v}`).join(' · ');
+  $('#answerCard').innerHTML=`<h3>${esc((r.frame.channel?r.frame.channel+' ':'')+r.metricLabel)} · ${lab(r.frame.from)} → ${lab(r.frame.to)}${scope?' · '+esc(scope):''}</h3>
+   <div class="big"><span class="v">${fmt(b.from,u)} → ${fmt(b.to,u)}</span><span class="d ${b.delta<0?'neg':'pos'}">${b.delta<0?'':'+'}${fmt(b.delta,u)} (${(b.pct*100).toFixed(1)}%)</span><span class="ev" data-ev="${b.evidence}">${b.evidence}</span></div>
+   <div class="answer">${link(r.answer)}</div>
+   <div class="mut" style="margin-top:10px">narration: ${esc(r.answerMode)} · ${r.evidence.length} receipts · total ${(r.timings.total/1000).toFixed(1)}s (SQL tests ${(r.timings.tests/1000).toFixed(1)}s)</div>
+   <div style="margin-top:12px;display:flex;gap:8px;align-items:center"><button data-fb="helpful">👍 Helpful</button><button class="ghost" data-fb="unhelpful">👎 Not helpful</button><span class="mut" id="fbmsg">Feedback updates the memory's trust ledger.</span></div>`;
+  const ex=r.findings.filter(f=>f.verdict!=='rejected'),ru=r.findings.filter(f=>f.verdict==='rejected');
+  $('#explains').style.display=ex.length?'':'none';$('#findings').innerHTML=ex.map(findingHtml).join('');
+  $('#ruledCard').style.display=ru.length?'':'none';$('#ruled').innerHTML=ru.map(f=>`<span class="r" title="${esc(f.summary)}">✕ ${esc(f.title)} <span class="ev" data-ev="${f.evidence[0]}">${f.evidence[0]}</span></span>`).join('');
+  if(r.hunch){$('#hunchCard').style.display='';$('#hunch').innerHTML=`<b>Nemotron guessed:</b> ${esc(r.hunch.order.join(' › '))}<br><span class="mut">${esc(r.hunch.why)}</span><br>${r.hunch.matched?'✅ The evidence agrees with its first guess.':'⚠️ The evidence points elsewhere. WhyLedger trusts the receipts, not the hunch.'}`}
+  $('#recall').innerHTML=r.recalled.length?r.recalled.map(x=>`<div>↺ ${esc(x.content.slice(0,220))}${x.content.length>220?'…':''} <span class="mut">(${x.id}, relevance ${x.relevance.toFixed(2)})</span></div>`).join(''):'<div>Nothing related yet. Ask a follow-up and it will remember this one.</div>';
+  $('#recall').insertAdjacentHTML('beforeend',`<div class="mut">Stored this conclusion as <b>${esc(r.memoryId)}</b>.</div>`);
+  fetch('/api/world').then(x=>x.json()).then(w=>$('#world').innerHTML=`<div>${w.entities} entities · ${w.relationships} relationships · ${w.facts} facts · ${w.audit} audit entries</div>`+w.recent.map(a=>`<div class="mut">• ${esc(a)}</div>`).join(''))}
+function feedback(kind){if(!R)return;fetch('/api/feedback',{method:'POST',body:JSON.stringify({memoryId:R.memoryId,kind})}).then(()=>fetch('/api/memory/audit?id='+R.memoryId)).then(x=>x.json()).then(a=>{$('#fbmsg').textContent='Recorded.';$('#ledger').innerHTML=`Trust ledger for ${esc(a.id)}: `+a.history.map(h=>`<b>${esc(h.action)}</b>`).join(' → ')})}
+$('#f').onsubmit=e=>{e.preventDefault();run()};
 </script></body></html>

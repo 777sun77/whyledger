@@ -12,3 +12,12 @@ if (Number(t.getRows()[0][0]) === 0) { await c.run(`CALL dsdgen(sf=${sf})`); con
 else console.log("TPC-DS already present");
 const r = await c.runAndReadAll("SELECT count(*) FROM store_sales");
 console.log("store_sales rows:", String(r.getRows()[0][0]));
+
+// Same investigation cubes as zetaris/01_sales_cube.sql + 02_returns_cube.sql (dev mirror)
+import fs from "node:fs";
+for (const [file, name] of [["zetaris/01_sales_cube.sql", "sales_cube"], ["zetaris/02_returns_cube.sql", "returns_cube"]] as const) {
+  const body = fs.readFileSync(file, "utf8").replace(/^CREATE OR REPLACE SCHEMASTORE VIEW \w+ WITH CONTAINER \w+ AS/m, "").replace(/TPCDS_DB\./g, "");
+  await c.run(`CREATE OR REPLACE TABLE ${name} AS ${body}`);
+  const n = await c.runAndReadAll(`SELECT count(*) FROM ${name}`);
+  console.log(`${name}: ${String(n.getRows()[0][0])} rows`);
+}
