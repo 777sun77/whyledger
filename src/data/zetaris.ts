@@ -49,7 +49,7 @@ export class ZetarisBackend implements SqlBackend {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ sql, limit: this.z.limit, ...(this.z.engineId ? { engineId: this.z.engineId } : {}) }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
     if (!r.ok) throw new Error(`Zetaris query failed: HTTP ${r.status} ${(await r.text()).slice(0, 300)}`);
     return { ...normalize(await r.json()), ms: Date.now() - started };

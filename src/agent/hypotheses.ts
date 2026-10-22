@@ -52,11 +52,9 @@ export const HYPOTHESES: Hypothesis[] = [
   {
     id: "geography",
     title: "A few regions drove it",
-    question: "Is the change concentrated in specific states?",
-    sql: (f, b) =>
-      f.metric === "store_revenue"
-        ? bySegment("COALESCE(st.s_state, 'unknown')", (_f, b) => `JOIN ${b.t("store")} st ON st.s_store_sk = s.ss_store_sk`)(f, b)
-        : bySegment("COALESCE(ca.ca_state, 'unknown')", (f, b) => `JOIN ${b.t("customer_address")} ca ON ca.ca_address_sk = s.${f.metric === "web_revenue" ? "ws_bill_addr_sk" : "cs_bill_addr_sk"}`)(f, b),
+    question: "Is the change concentrated in shoppers from specific states?",
+    // Shopper home state (customer_address). TPC-DS stores sit in one state, so the shopper's state is the useful geography.
+    sql: bySegment("COALESCE(ca.ca_state, 'unknown')", (f, b) => `JOIN ${b.t("customer_address")} ca ON ca.ca_address_sk = s.${f.metric === "store_revenue" ? "ss_addr_sk" : f.metric === "web_revenue" ? "ws_bill_addr_sk" : "cs_bill_addr_sk"}`),
   },
   {
     id: "category",
