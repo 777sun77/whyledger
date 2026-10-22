@@ -38,4 +38,6 @@ export interface Report {
   evidence: Evidence[];
   backend: string;
   steps: { at: string; step: string; detail: string }[];
+  /** H-MEM id of the stored conclusion (feedback + audit target) */
+  memoryId: string;
 }

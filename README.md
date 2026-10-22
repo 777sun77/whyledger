@@ -40,6 +40,8 @@ No LLM key? The agent runs fully offline with deterministic planning and narrati
 | **NVIDIA Nemotron** | `src/llm/provider.ts` (NIM `integrate.api.nvidia.com`, or OpenRouter `:free`, or a local Meterless Runtime) | Framing, planning and cited narration |
 | **Cursor** | Development environment (see `docs/CURSOR.md`) | |
 
+Machine-readable summary: [`metadata.json`](metadata.json). Meterless engines are pinned to commit `1742dec` of github.com/Meterless/Meterless; their own test suites pass (H-MEM 10/10, World Model 10/10).
+
 ## Safety
 
 - The agent can only read: `assertReadOnly()` rejects anything but a single SELECT/WITH/SHOW/DESCRIBE.

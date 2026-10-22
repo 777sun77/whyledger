@@ -31,6 +31,10 @@ http.createServer(async (req, res) => {
       mem.hmem.feedback(body.memoryId, body.kind === "unhelpful" ? "unhelpful" : "helpful");
       return json(res, { ok: true });
     }
+    if (url.pathname === "/api/memory/audit") {
+      const id = url.searchParams.get("id") ?? "";
+      return json(res, { id, history: mem.hmem.ledger.history(id) });
+    }
     if (url.pathname === "/api/world") return json(res, { audit: mem.world.audit().slice(-50) });
     res.writeHead(404); res.end();
   } catch (e) {

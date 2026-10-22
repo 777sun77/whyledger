@@ -7,7 +7,7 @@ import type { Evidence, Finding, Frame, Report } from "./types.ts";
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const pct = (a: number, b: number) => (a === 0 ? 0 : (b - a) / Math.abs(a));
-const fmt = (n: number) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : Math.abs(n) >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(0)}`);
+const fmt = (n: number) => { const a = Math.abs(n), m = n < 0 ? "-" : ""; return a >= 1e6 ? `${m}$${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${m}$${(a / 1e3).toFixed(1)}k` : `${m}$${a.toFixed(0)}`; };
 const sgn = (n: number) => (n >= 0 ? "+" : "");
 
 export type StepListener = (step: string, detail: string) => void;
@@ -112,93 +112,124 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
 
   // 8. Remember the conclusion for next time (H-MEM), so follow-ups compound
   const top = findings.filter((f) => f.verdict !== "rejected").slice(0, 2);
-  mem.hmem.add({
+  const remembered = mem.hmem.add({
     content: `Investigation "${question}": ${frame.metric} ${label(frame.from)}->${label(frame.to)} changed ${sgn(delta)}${fmt(delta)}. Main drivers: ${top.map((f) => `${f.title} (${f.summary})`).join("; ") || "none supported"}.`,
     type: "factual",
     source: `whyledger:${runId}`,
   });
-  step("remember", "conclusion stored in H-MEM");
+  step("remember", `conclusion stored in H-MEM as ${remembered.id}`);
 
   return {
     frame,
     baseline: { from: bFrom, to: bTo, delta, pct: pct(bFrom, bTo), evidence: base.id },
-    findings, answer: text, answerMode: mode, recalled, evidence, backend: backend.name, steps,
+    findings, answer: text, answerMode: mode, recalled, evidence, backend: backend.name, steps, memoryId: remembered.id,
   };
 }
 
 function rank(f: Finding) {
-  return (f.verdict === "supported" ? 2 : f.verdict === "partial" ? 1 : 0) + Math.min(Math.abs(f.explains), 1.5);
+  return (f.verdict === "supported" ? 2 : f.verdict === "partial" ? 1 : 0) + f.explains;
 }
 
-/** Pure scoring from query rows. Exported for tests. */
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+/**
+ * Pure scoring from query rows. Exported for tests.
+ * Every "explains" value is bounded to 0..1 and means: the share of the
+ * movement in the direction of the net change that this hypothesis accounts
+ * for. Raw $ contributions (which can exceed the net change when other
+ * segments offset) are reported separately as dollars, never as a % > 100.
+ */
 export function score(id: string, title: string, ev: Evidence, delta: number, baseFrom: number): Finding {
   const base = { hypothesis: id, title, evidence: [ev.id] };
+  const dir = Math.sign(delta) || -1;
+  const tiny = baseFrom !== 0 && Math.abs(delta / baseFrom) < 0.002;
   if (id === "price_volume") {
     const a = ev.rows.find((r) => r.period === "from") ?? {};
     const b = ev.rows.find((r) => r.period === "to") ?? {};
     const uA = num(a.units), uB = num(b.units), rA = num(a.revenue), rB = num(b.revenue);
     const pA = uA ? rA / uA : 0, pB = uB ? rB / uB : 0;
     const volEffect = (uB - uA) * pA; // revenue change from units at old price
-    const priceEffect = (pB - pA) * uB; // revenue change from price at new units
-    const vol = delta ? volEffect / delta : 0;
-    const price = delta ? priceEffect / delta : 0;
-    const main = Math.abs(vol) >= Math.abs(price) ? "volume" : "price";
+    const priceEffect = (pB - pA) * uB; // revenue change from price at new units (vol + price = delta exactly)
+    const gross = Math.abs(volEffect) + Math.abs(priceEffect) || 1;
+    const volShare = Math.abs(volEffect) / gross, priceShare = Math.abs(priceEffect) / gross;
+    const main = volShare >= priceShare ? "volume" : "price";
+    const mainEffect = main === "volume" ? volEffect : priceEffect;
+    const sameDir = Math.sign(mainEffect) === dir;
     return {
       ...base,
-      explains: Math.max(vol, price),
-      verdict: Math.max(vol, price) > 0.6 ? "supported" : "partial",
-      summary: `units ${sgn(uB - uA)}${(pct(uA, uB) * 100).toFixed(1)}%, revenue/unit ${sgn(pB - pA)}${(pct(pA, pB) * 100).toFixed(1)}% — mostly a ${main} effect (volume ${(vol * 100).toFixed(0)}%, price ${(price * 100).toFixed(0)}% of the change)`,
+      explains: sameDir ? Math.max(volShare, priceShare) : 0,
+      verdict: tiny ? "rejected" : sameDir && Math.max(volShare, priceShare) >= 0.7 ? "supported" : "partial",
+      summary: `units ${sgn(uB - uA)}${(pct(uA, uB) * 100).toFixed(1)}%, revenue/unit ${sgn(pB - pA)}${(pct(pA, pB) * 100).toFixed(1)}% — volume effect ${sgn(volEffect)}${fmt(volEffect)}, price effect ${sgn(priceEffect)}${fmt(priceEffect)}: mostly a ${main} story`,
       drivers: [
-        { segment: "volume (units)", from: uA, to: uB, delta: volEffect, shareOfDelta: vol },
-        { segment: "price (revenue/unit)", from: pA, to: pB, delta: priceEffect, shareOfDelta: price },
+        { segment: "volume (units)", from: uA, to: uB, delta: volEffect, shareOfDelta: volShare * Math.sign(volEffect) * dir },
+        { segment: "price (revenue/unit)", from: pA, to: pB, delta: priceEffect, shareOfDelta: priceShare * Math.sign(priceEffect) * dir },
       ],
     };
   }
   const segs = ev.rows.map((r) => {
     const from = num(r.v_from), to = num(r.v_to);
-    return { segment: String(r.segment), from, to, delta: to - from, shareOfDelta: delta ? (to - from) / delta : 0 };
+    return { segment: String(r.segment), from, to, delta: to - from, shareOfDelta: 0 };
   });
   if (id === "channel_shift") {
-    const others = segs.filter((s) => s.shareOfDelta !== 1 && Math.abs(s.delta - delta) > 1e-6);
-    const opposite = others.filter((s) => Math.sign(s.delta) === -Math.sign(delta));
-    const offset = opposite.reduce((a, s) => a + Math.abs(s.delta), 0) / (Math.abs(delta) || 1);
+    const self = segs.find((s) => Math.abs(s.delta - delta) < Math.max(1, Math.abs(delta) * 1e-6));
+    const others = segs.filter((s) => s !== self);
+    const opposite = others.filter((s) => Math.sign(s.delta) === -dir);
+    const offsetAmt = opposite.reduce((a, s) => a + Math.abs(s.delta), 0);
+    const offset = clamp01(offsetAmt / (Math.abs(delta) || 1));
+    for (const s of segs) s.shareOfDelta = s === self ? 1 : clamp01(Math.abs(s.delta) / (Math.abs(delta) || 1)) * (Math.sign(s.delta) === dir ? 1 : -1);
     return {
       ...base,
-      explains: Math.min(offset, 1),
-      verdict: offset >= 0.5 ? "supported" : offset >= 0.2 ? "partial" : "rejected",
-      summary: opposite.length ? `${opposite.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} moved the opposite way (offsets ${(offset * 100).toFixed(0)}% of the change)` : `other channels moved the same direction (${others.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")}) — not a channel shift`,
+      explains: offset,
+      verdict: tiny ? "rejected" : offset >= 0.5 ? "supported" : offset >= 0.2 ? "partial" : "rejected",
+      summary: opposite.length
+        ? `${opposite.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} moved the opposite way while this channel went ${sgn(delta)}${fmt(delta)}${offset >= 1 ? " — fully offset" : ` — offsets ${(offset * 100).toFixed(0)}%`} (co-movement, not proof of switching)`
+        : `other channels moved the same direction (${others.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")}) — not a channel shift`,
       drivers: segs,
     };
   }
   if (id === "returns") {
     const r = segs[0] ?? { from: 0, to: 0, delta: 0, segment: "returns", shareOfDelta: 0 };
-    const share = delta ? -r.delta / delta : 0; // more returns explains a fall
+    // More returns can explain a fall; fewer returns can explain a rise.
+    const helps = Math.sign(-r.delta) === dir;
+    const share = helps ? clamp01(Math.abs(r.delta) / (Math.abs(delta) || 1)) : 0;
+    r.shareOfDelta = share;
     return {
       ...base,
       explains: share,
-      verdict: share >= 0.3 ? "supported" : share >= 0.1 ? "partial" : "rejected",
-      summary: `returns ${fmt(r.from)} -> ${fmt(r.to)} (${sgn(r.delta)}${fmt(r.delta)}), ${(share * 100).toFixed(0)}% of the revenue change`,
+      verdict: tiny ? "rejected" : share >= 0.3 ? "supported" : share >= 0.1 ? "partial" : "rejected",
+      summary: `returns ${fmt(r.from)} -> ${fmt(r.to)} (${sgn(r.delta)}${fmt(r.delta)})${helps ? `, up to ${(share * 100).toFixed(0)}% of the change` : ", moved the wrong way to explain it"}`,
       drivers: [r],
     };
   }
-  // Segment decompositions: is the change concentrated or proportional?
-  segs.sort((a, b) => b.shareOfDelta - a.shareOfDelta);
+  // Segment decompositions. Compare each segment's share of the movement in
+  // the net direction with its share of baseline revenue: a cause is
+  // concentrated, a non-cause moves in proportion.
   const totalFrom = segs.reduce((a, s) => a + s.from, 0) || baseFrom || 1;
-  const dissimilarity = segs.reduce((a, s) => a + Math.abs(s.shareOfDelta - s.from / totalFrom), 0) / 2;
-  const top = segs.slice(0, 2);
-  const topShare = top.reduce((a, s) => a + s.shareOfDelta, 0);
+  const withDir = segs.filter((s) => Math.sign(s.delta) === dir);
+  const against = segs.filter((s) => Math.sign(s.delta) === -dir);
+  const grossDir = withDir.reduce((a, s) => a + Math.abs(s.delta), 0) || 1;
+  for (const s of segs) s.shareOfDelta = Math.sign(s.delta) === dir ? Math.abs(s.delta) / grossDir : -Math.abs(s.delta) / grossDir;
+  withDir.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const top = withDir.slice(0, 2);
+  const topShare = top.reduce((a, s) => a + s.shareOfDelta, 0); // 0..1
   const topBaseShare = top.reduce((a, s) => a + s.from / totalFrom, 0);
-  const lead = top[0]; const leadOver = lead ? lead.shareOfDelta / Math.max(lead.from / totalFrom, 1e-9) : 0;
-  const verdict = dissimilarity >= 0.35 && leadOver >= 1.5 ? "supported" : dissimilarity >= 0.15 ? "partial" : "rejected";
+  const lead = top[0];
+  const leadOver = lead ? lead.shareOfDelta / Math.max(lead.from / totalFrom, 1e-9) : 0;
+  const offsetAmt = against.reduce((a, s) => a + Math.abs(s.delta), 0);
+  const verdict: Finding["verdict"] =
+    tiny || segs.length < 2 ? "rejected" : topShare >= 0.5 && leadOver >= 1.5 ? "supported" : topShare >= 0.35 && leadOver >= 1.2 ? "partial" : "rejected";
+  const ordered = [...withDir, ...against.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))];
   return {
     ...base,
-    explains: topShare,
+    explains: verdict === "rejected" ? 0 : topShare,
     verdict,
     summary:
-      verdict === "rejected"
-        ? `change is spread proportionally across ${segs.length} segments (concentration ${(dissimilarity * 100).toFixed(0)}%) — not the cause`
-        : `${top.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} = ${(topShare * 100).toFixed(0)}% of the change vs ${(topBaseShare * 100).toFixed(0)}% of baseline revenue (concentration ${(dissimilarity * 100).toFixed(0)}%)`,
-    drivers: segs.slice(0, 8),
+      segs.length < 2
+        ? `only one segment in the data (${segs[0]?.segment ?? "none"}) — cannot test`
+        : verdict === "rejected"
+          ? `movement is spread roughly in proportion across ${segs.length} segments — not the cause`
+          : `${top.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} = ${(topShare * 100).toFixed(0)}% of all ${dir < 0 ? "declines" : "gains"} vs ${(topBaseShare * 100).toFixed(0)}% of baseline revenue${offsetAmt ? `; partly offset by ${sgn(-dir)}${fmt(offsetAmt * -dir)} elsewhere` : ""}`,
+    drivers: ordered.slice(0, 8),
   };
 }
 
