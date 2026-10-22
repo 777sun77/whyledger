@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhyLedger — every answer has a receipt</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8a93a6;--ok:#3ecf8e;--part:#f5b84b;--no:#6b7280;--acc:#76b900}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:18px 28px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center}
+header h1{font-size:18px;margin:0}header .tag{color:var(--mut);font-size:13px}#status{margin-left:auto;font-size:12px;color:var(--mut)}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr 340px;gap:20px}
+form{grid-column:1/-1;display:flex;gap:8px}input{flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:15px}
+button{padding:12px 18px;border-radius:10px;border:0;background:var(--acc);color:#000;font-weight:600;cursor:pointer}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.answer{white-space:pre-wrap;font-size:16px}.mut{color:var(--mut);font-size:12px}
+.f{border-left:4px solid var(--no);padding-left:12px;margin:10px 0}.f.supported{border-color:var(--ok)}.f.partial{border-color:var(--part)}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--line);margin-left:6px;text-transform:uppercase}
+.ev{cursor:pointer;color:var(--acc);text-decoration:underline}pre{white-space:pre-wrap;background:#0b0d11;padding:10px;border-radius:8px;font-size:12px;overflow:auto}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px}.bar i{display:block;height:6px;background:var(--acc);border-radius:3px}
+#steps div{font-size:13px;padding:4px 0;border-bottom:1px dashed var(--line)}#steps b{color:var(--acc);font-weight:600;margin-right:6px}
+</style></head><body>
+<header><h1>WhyLedger</h1><span class="tag">Ask why a number moved. Get the answer, what was ruled out, and a receipt for every claim.</span><span id="status"></span></header>
+<main>
+<form id="f"><input id="q" value="Why did store revenue change from 2001 Q4 to 2002 Q4?"><button>Investigate</button></form>
+<section><div id="answer" class="card"><span class="mut">Ask a question to start an investigation.</span></div><div id="findings"></div></section>
+<aside><div class="card"><div class="mut">AGENT STEPS</div><div id="steps"></div></div><div class="card"><div class="mut">RECALLED FROM MEMORY (H-MEM)</div><div id="recall" class="mut">—</div></div><div class="card" id="receipt"><div class="mut">RECEIPT</div><div class="mut">Click an evidence id to see the exact query and rows.</div></div></aside>
+</main>
+<script>
+const $=s=>document.querySelector(s);let EV={};
+fetch('/api/status').then(r=>r.json()).then(s=>$('#status').textContent=`data: ${s.backend} · model: ${s.llm}`);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const link=t=>esc(t).replace(/ev-\d+/g,m=>`<span class="ev" data-ev="${m}">${m}</span>`);
+document.addEventListener('click',e=>{const id=e.target.dataset?.ev;if(!id||!EV[id])return;const v=EV[id];
+$('#receipt').innerHTML=`<div class="mut">RECEIPT ${id} · ${esc(v.hypothesis)} · ${v.ms} ms · ${esc(v.backend)}</div><pre>${esc(v.sql)}</pre><pre>${esc(JSON.stringify(v.rows.slice(0,12),null,1))}</pre>`});
+$('#f').onsubmit=e=>{e.preventDefault();$('#steps').innerHTML='';$('#findings').innerHTML='';$('#answer').innerHTML='<span class="mut">Investigating…</span>';
+const es=new EventSource('/api/investigate?q='+encodeURIComponent($('#q').value));
+es.addEventListener('step',m=>{const d=JSON.parse(m.data);$('#steps').insertAdjacentHTML('beforeend',`<div><b>${esc(d.step)}</b>${link(d.detail)}</div>`)});
+es.addEventListener('report',m=>{es.close();const r=JSON.parse(m.data);EV=Object.fromEntries(r.evidence.map(x=>[x.id,x]));
+$('#answer').innerHTML=`<div class="answer">${link(r.answer)}</div><div class="mut" style="margin-top:8px">narration: ${esc(r.answerMode)}</div>`;
+$('#recall').innerHTML=r.recalled.length?r.recalled.map(x=>`<div>• ${esc(x.content)}</div>`).join(''):'nothing yet — ask again and it will remember';
+$('#findings').innerHTML=r.findings.map(f=>`<div class="card f ${f.verdict}"><b>${esc(f.title)}</b><span class="badge">${f.verdict}</span><div>${link(f.summary)} [${f.evidence.map(link).join(', ')}]</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,f.explains*100))}%"></i></div></div>`).join('')});
+es.onerror=()=>{es.close()}};
+</script></body></html>

@@ -1,0 +1,24 @@
+{
+  "name": "whyledger",
+  "version": "1.0.0",
+  "description": "WhyLedger: an investigator agent that answers why a business metric moved, with a receipt for every claim. Zetaris + Meterless + Nemotron.",
+  "main": "index.js",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "seed:local": "tsx scripts/seed-local.ts 0.1",
+    "investigate": "tsx src/cli.ts",
+    "serve": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@duckdb/node-api": "^2.0.0-r.1",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+vendor/
+data/*.duckdb*
+.duckdb-ext/
+.whyledger/
+.world/
+.env.local
+*.log
