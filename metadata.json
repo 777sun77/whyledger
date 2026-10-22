@@ -13,8 +13,8 @@
   ],
   "problem": "Explaining why a KPI moved means manually querying many disconnected tables and tools, and the final answer rarely shows its evidence or what was ruled out.",
   "repository": "https://github.com/777sun77/whyledger",
-  "demo_video": "TBD",
-  "pitch_deck": "TBD",
+  "demo_video": "https://github.com/777sun77/whyledger/releases/download/v1.0/demo.mp4",
+  "pitch_deck": "https://github.com/777sun77/whyledger/blob/master/docs/media/deck.pdf",
   "license": "Apache-2.0",
   "built_during_window": {
     "start_utc": "2026-10-22T00:00:00Z",
@@ -77,9 +77,10 @@
       "where": [
         "src/llm/provider.ts",
         "src/agent/framing.ts",
-        "src/agent/investigator.ts (hunch, narrate)"
+        "src/agent/investigator.ts (hunch, narrate)",
+        "src/agent/grounding.ts"
       ],
-      "how": "Nemotron frames unusual questions, forms a hypothesis-ranking hunch in parallel with the SQL tests (then compared with the evidence), and narrates the answer under a citation check. Numbers never come from the model; calls are disk-cached and time-budgeted."
+      "how": "Nemotron frames unusual questions, forms a hypothesis-ranking hunch in parallel with the SQL tests (then compared with the evidence), and narrates the answer under a citation check and a numeric grounding check. Numbers never come from the model; calls are disk-cached and time-budgeted."
     },
     "cursor": {
       "used": true,
@@ -101,5 +102,16 @@
   "datasets": [
     "Zetaris TPCDS_DB (retail, 3 channels)",
     "Zetaris NY_TAXI (NYC TLC yellow taxi 2024-2025 + taxi zones)"
-  ]
+  ],
+  "demo_video_mirror": "https://github.com/777sun77/whyledger/blob/master/docs/media/demo.mp4",
+  "evaluation": {
+    "where": [
+      "eval/README.md",
+      "scripts/eval-planted.ts",
+      "scripts/eval-zetaris.ts",
+      "eval/*.json"
+    ],
+    "planted_causes": "16/17 scenarios fully correct (75/76 checks); no cause blamed in both no-cause controls",
+    "zetaris_faithfulness": "5 live investigations: 33/33 citations valid, 19/19 narrated numbers grounded in SQL results; materialized-cube baselines equal raw-table recompute exactly"
+  }
 }

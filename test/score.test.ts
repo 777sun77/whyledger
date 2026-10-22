@@ -56,3 +56,16 @@ test("framing honors filters", () => {
   const d = frameByRules("Why did taxi revenue change from Oct 2024 to Feb 2025?")!;
   assert.equal(d.metric, "revenue"); assert.equal(d.from.month, 10);
 });
+
+import { checkGrounding, extractNumbers } from "../src/agent/grounding.ts";
+test("grounding: numbers in the answer must come from findings", () => {
+  const src = ["$402.33M -> $407.50M (+$5.17M, +1.3%)", "College +$2.54M, Advanced Degree +$1.77M = 65% of all gains"];
+  assert.deepEqual(checkGrounding("Revenue rose $5.2M (+1.3%) [ev-1], 65% from College [ev-4] in 2002 Q4.", src).ungrounded, []);
+  assert.deepEqual(checkGrounding("Revenue rose $9.8M, 40% from College [ev-4].", src).ungrounded, ["$9.8M", "40%"]);
+  assert.equal(extractNumbers("3.83M trips, -6.7%").length, 2);
+});
+
+import { tidyCitations } from "../src/agent/investigator.ts";
+test("citations are normalised to receipt ids", () => {
+  assert.equal(tidyCitations("drop [distance_band, ev-3] and [note]"), "drop [ev-3] and note");
+});

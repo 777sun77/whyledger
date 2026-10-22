@@ -1,0 +1,173 @@
+{
+  "backend": "Zetaris Lightning",
+  "ranAt": "2026-10-22T12:37:25.960Z",
+  "results": [
+    {
+      "question": "Why did store revenue change from 2001 Q4 to 2002 Q4?",
+      "ok": true,
+      "seconds": 68.7,
+      "receipts": 9,
+      "answerMode": "openrouter:nvidia/nemotron-3.5-lightning:free · citations + 8 numbers verified",
+      "narratedByNemotron": true,
+      "citations": {
+        "cited": 7,
+        "valid": 7
+      },
+      "numbers": {
+        "claims": 8,
+        "grounded": 8,
+        "ungrounded": []
+      },
+      "bounded": true,
+      "supported": [
+        "price_volume",
+        "education",
+        "category"
+      ],
+      "ruledOut": [
+        "channel_shift",
+        "state",
+        "promoted",
+        "returns"
+      ],
+      "recompute": {
+        "cube": [
+          402333788.10999966,
+          407500391.9500003
+        ],
+        "raw": [
+          402333788.10999954,
+          407500391.9500035
+        ],
+        "rawScanSeconds": 21.6,
+        "match": true
+      },
+      "answer": "Revenue rose $5.17M. The primary driver was volume growth, +1.0% adding +$4.20M, with a small price effect +$964.3k [ev-6]. College education gains (+$2.54M) and advanced degree gains (+$1.77M) contributed part, partly offset elsewhere [ev-4]. Children's and electronics categories contributed part, +$1.79M and +$1.22M net after offsets [ev-3]. Channel shift, state movement, promoted changes, and returns were ruled out as causes [ev-7, ev-2, ev-5, ev-8].  \nNext check: monitor whether volume or education-driven gains persist in the next quarter."
+    },
+    {
+      "question": "Why did web revenue in TX change from 2000 to 2001?",
+      "ok": true,
+      "seconds": 105.6,
+      "receipts": 8,
+      "answerMode": "openrouter:nvidia/nemotron-3.5-lightning:free unavailable/timed out -> template",
+      "narratedByNemotron": false,
+      "citations": {
+        "cited": 7,
+        "valid": 7
+      },
+      "numbers": {
+        "claims": 0,
+        "grounded": 0,
+        "ungrounded": []
+      },
+      "bounded": true,
+      "supported": [
+        "price_volume",
+        "education"
+      ],
+      "ruledOut": [
+        "promoted",
+        "returns"
+      ],
+      "recompute": "n/a",
+      "answer": "Revenue went $25.73M -> $28.96M (+$3.22M) [ev-1].\nWhat explains it:\n1. Price vs volume: volume +9.0%, value per unit +3.2% — volume effect +$2.32M, price effect +$898.6k: mostly a volume story [ev-5]\n2. A customer segment shifted: College +$1.16M, Secondary +$819.5k = 56% of all gains vs 28% of baseline revenue; partly offset by -$327.4k elsewhere [ev-3]\n3. Connecting: College × category: College (+$1.16M) broken down by category: spread evenly — the two drivers are independent [ev-8]\n4. Demand moved to another channel: store -$1.22M moved the opposite way while this channel went +$3.22M — offsets 38% (co-movement, not proof of switching) [ev-6]\nRuled out: Promotions changed [ev-4]; Returns ate into it [ev-7]."
+    },
+    {
+      "question": "Why did catalog revenue for Electronics change from 2001 Q3 to 2002 Q3?",
+      "ok": true,
+      "seconds": 50.4,
+      "receipts": 7,
+      "answerMode": "openrouter:nvidia/nemotron-3.5-lightning:free · citations + 5 numbers verified",
+      "narratedByNemotron": true,
+      "citations": {
+        "cited": 6,
+        "valid": 6
+      },
+      "numbers": {
+        "claims": 5,
+        "grounded": 5,
+        "ungrounded": []
+      },
+      "bounded": true,
+      "supported": [
+        "price_volume"
+      ],
+      "ruledOut": [
+        "channel_shift",
+        "state",
+        "education",
+        "promoted",
+        "returns"
+      ],
+      "recompute": "n/a",
+      "answer": "The $12.20M increase in catalog revenue for Electronics from 2001 Q3 to 2002 Q3 is driven by a substantial volume rise and a smaller price effect. According to the supported finding [ev-5], volume increased +64.0%, contributing +$11.16M, while value per unit rose +3.6%, contributing +$1.04M; together they account for the full change. All other potential drivers were evaluated and ruled out: channel shift [ev-6], state-segment distribution [ev-2], education-segment distribution [ev-3], promoted-segment distribution [ev-4], and the returns trend [ev-7] moved in the wrong direction. No other segment or channel contributed meaningfully.\n\nNext check: Verify whether the volume surge originated from new customer acquisition, expanded product availability, or a specific marketing campaign in the catalog period."
+    },
+    {
+      "question": "Why did yellow taxi trips drop from 2024-10 to 2025-02?",
+      "ok": true,
+      "seconds": 61.3,
+      "receipts": 7,
+      "answerMode": "openrouter:nvidia/nemotron-3.5-lightning:free cited no receipts -> template",
+      "narratedByNemotron": false,
+      "citations": {
+        "cited": 7,
+        "valid": 7
+      },
+      "numbers": {
+        "claims": 0,
+        "grounded": 0,
+        "ungrounded": []
+      },
+      "bounded": true,
+      "supported": [
+        "time_band"
+      ],
+      "ruledOut": [
+        "borough",
+        "airport",
+        "distance_band",
+        "payment"
+      ],
+      "recompute": {
+        "cube": [
+          3833780,
+          3577514
+        ],
+        "raw": [
+          3833780,
+          3577514
+        ],
+        "rawScanSeconds": 163.2,
+        "match": true
+      },
+      "answer": "Trips went 3.83M -> 3.58M (-256.3k) [ev-1].\nWhat explains it:\n1. A time of day drove it: midday -120.8k, evening peak -53.1k = 68% of all declines vs 58% of baseline revenue [ev-5]\n2. Connecting: midday × borough: midday (-120.8k) broken down by borough: spread evenly — the two drivers are independent [ev-7]\nRuled out: A few boroughs drove it [ev-2]; Airport trips changed [ev-3]; Short vs long trips [ev-4]; Payment mix shifted [ev-6]."
+    },
+    {
+      "question": "Why did taxi revenue in Manhattan change from 2024-05 to 2025-01?",
+      "ok": true,
+      "seconds": 56.8,
+      "receipts": 7,
+      "answerMode": "openrouter:nvidia/nemotron-3.5-lightning:free · citations + 6 numbers verified",
+      "narratedByNemotron": true,
+      "citations": {
+        "cited": 6,
+        "valid": 6
+      },
+      "numbers": {
+        "claims": 6,
+        "grounded": 6,
+        "ungrounded": []
+      },
+      "bounded": true,
+      "supported": [],
+      "ruledOut": [
+        "fees",
+        "airport",
+        "time_band",
+        "payment"
+      ],
+      "recompute": "n/a",
+      "answer": "The $11.87M decline reflects several contributing factors. Distance bands (3-10 mi: -$4.84M; 1-3 mi: -$4.68M) account for 79% of the drop, with a partial offset elsewhere distance_band, ev-3. Unit volume and value per unit both fell (-$4.96M and -$6.92M), each contributing to the decline price_volume, ev-6. All other potential drivers—congestion surcharges, airport trips, time-of-day patterns, and payment methods—were ruled out as primary causes fees ev-7; airport ev-2; time_band ev-4; payment ev-5. Since no single factor is supported as the main driver, the change is broad-based with no one cause dominating.\n\nNext check: Compare the 1-3 mi and 3-10 mi distance-band revenue trends month-over-month to see if the pattern persists."
+    }
+  ]
+}

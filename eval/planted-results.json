@@ -1,0 +1,399 @@
+{
+  "question": "Why did store revenue change from 2001 Q4 to 2002 Q4?",
+  "ranAt": "2026-10-22T12:42:42.022Z",
+  "scenarios": 17,
+  "passed": 16,
+  "checks": 76,
+  "checksPassed": 75,
+  "results": [
+    {
+      "scenario": "category Electronics x0.55",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-4.5%",
+      "top": [
+        "category:supported(Electronics)",
+        "drill:category>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "category Books x0.6",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-4.4%",
+      "top": [
+        "category:supported(Books)",
+        "drill:category>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "category Home x1.5",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "4.4%",
+      "top": [
+        "category:supported(Home)",
+        "drill:category>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "category Shoes x0.5",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-4.5%",
+      "top": [
+        "category:supported(Shoes)",
+        "drill:category>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "shopper state TX x0.5",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-3.9%",
+      "top": [
+        "state:supported(TX)",
+        "drill:state>category:connection(Music)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "category",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "shopper state KY x1.6",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "3.0%",
+      "top": [
+        "state:supported(KY)",
+        "drill:state>category:connection(Music)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "shopper state GA x0.4",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-2.5%",
+      "top": [
+        "state:supported(GA)",
+        "drill:state>category:connection(Books)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "segment College x1.45",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "6.5%",
+      "top": [
+        "education:supported(College)",
+        "drill:education>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "segment Primary x0.6",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-5.4%",
+      "top": [
+        "education:supported(Primary)",
+        "drill:education>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "segment 4 yr Degree x0.6",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-6.1%",
+      "top": [
+        "education:supported(4 yr Degree)",
+        "drill:education>state:connection(TX)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "promotion-driven lift (no-promo sales x4)",
+      "pass": false,
+      "checks": {
+        "found": true,
+        "lead": true,
+        "noFalseSegment": false,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "3.2%",
+      "top": [
+        "promoted:supported(no promotion)",
+        "drill:promoted>education:connection(unknown)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "category",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "price rise +10%, same units",
+      "pass": true,
+      "checks": {
+        "story": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "10.0%",
+      "top": [
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "uniform volume drop -15%",
+      "pass": true,
+      "checks": {
+        "story": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-15.0%",
+      "top": [
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "demand moves from store to web",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-10.0%",
+      "top": [
+        "channel_shift:supported(catalog)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "returns spike (store returns x4, sales -5%)",
+      "pass": true,
+      "checks": {
+        "found": true,
+        "noFalseSegment": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-5.0%",
+      "top": [
+        "returns:supported(returns)",
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "channel_shift"
+      ]
+    },
+    {
+      "scenario": "control: noise only (+/-0.4%)",
+      "pass": true,
+      "checks": {
+        "noFalseCause": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "-0.0%",
+      "top": [],
+      "ruledOut": [
+        "price_volume",
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    },
+    {
+      "scenario": "control: uniform +6% (no single cause)",
+      "pass": true,
+      "checks": {
+        "story": true,
+        "noFalseCause": true,
+        "bounded": true,
+        "receipts": true
+      },
+      "change": "6.0%",
+      "top": [
+        "price_volume:supported(volume (units))"
+      ],
+      "ruledOut": [
+        "state",
+        "category",
+        "education",
+        "promoted",
+        "channel_shift",
+        "returns"
+      ]
+    }
+  ]
+}

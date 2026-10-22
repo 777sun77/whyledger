@@ -4,6 +4,7 @@ import { chat, llmAvailable, llmLabel, parseJson } from "../llm/provider.ts";
 import type { Memory } from "../memory/meterless.ts";
 import { baselineSql, DATASETS, drillSql, hypotheses } from "./datasets.ts";
 import { frameQuestion } from "./framing.ts";
+import { checkGrounding } from "./grounding.ts";
 import type { Evidence, Finding, Frame, Report } from "./types.ts";
 
 export { frameQuestion };
@@ -125,7 +126,7 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
   step("world-model", `${findings.length} findings + ${evidence.length} receipts written with provenance`);
 
   // 9. Answer (Nemotron narrates only computed findings, must cite receipts)
-  const { text, mode } = await timed("narrate", narrate(frame, metric.label, unit, { bFrom, bTo, delta }, findings, recalled));
+  const { text, mode, grounding } = await timed("narrate", narrate(frame, metric.label, unit, { bFrom, bTo, delta }, findings, recalled));
   step("answer", mode);
 
   // 10. Remember
@@ -141,7 +142,7 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
   return {
     frame, metricLabel: metric.label, unit,
     baseline: { from: bFrom, to: bTo, delta, pct: pct(bFrom, bTo), evidence: base.id },
-    findings, answer: text, answerMode: mode, hunch, recalled, evidence, backend: backend.name, steps, timings, memoryId: remembered.id,
+    findings, answer: text, answerMode: mode, grounding, hunch, recalled, evidence, backend: backend.name, steps, timings, memoryId: remembered.id,
   };
 }
 
@@ -262,7 +263,7 @@ export function score(id: string, title: string, ev: Evidence, delta: number, ba
         ? `only one segment in the data (${segs[0]?.segment ?? "none"}) — cannot test`
         : verdict === "rejected"
           ? `movement is spread roughly in proportion across ${segs.length} segments — not the cause`
-          : `${top.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} = ${(topShare * 100).toFixed(0)}% of all ${dir < 0 ? "declines" : "gains"} vs ${(topBaseShare * 100).toFixed(0)}% of baseline revenue${offsetAmt ? `; partly offset by ${sgn(-dir)}${fmt(offsetAmt * -dir)} elsewhere` : ""}`,
+          : `${top.map((s) => `${s.segment} ${sgn(s.delta)}${fmt(s.delta)}`).join(", ")} = ${(topShare * 100).toFixed(0)}% of all ${dir < 0 ? "declines" : "gains"} vs ${(topBaseShare * 100).toFixed(0)}% of the baseline${offsetAmt ? `; partly offset by ${sgn(-dir)}${fmt(offsetAmt * -dir)} elsewhere` : ""}`,
     drivers: ordered.slice(0, 8),
   };
 }
@@ -303,7 +304,7 @@ async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { 
   if (!llmAvailable()) return { text: template(), mode: llmLabel() };
   const budget = Number(process.env.WHYLEDGER_NARRATE_WAIT_MS ?? 75000);
   const reply = await Promise.race([chat([
-    { role: "system", content: "You explain metric changes to a busy operations manager. Use ONLY the findings given; never invent numbers. Cite evidence ids in [brackets] after each claim. Mention what was ruled out. <=130 words, plain language, then one line 'Next check:' with a concrete follow-up." },
+    { role: "system", content: "You explain metric changes to a busy operations manager. Use ONLY the findings given; never invent numbers. Cite evidence ids in [brackets] after each claim. Respect each finding's verdict: only 'supported' and 'connection' findings may be called causes or drivers; describe 'partial' ones as contributing in part, never as the main driver; if nothing is supported, say the change is broad-based with no single cause. Mention what was ruled out. <=130 words, plain language, then one line 'Next check:' with a concrete follow-up." },
     { role: "user", content: `Question: ${frame.question}\nChange: ${metricLabel} ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
   ], { maxTokens: 1500, demoKey: `narrate:${frame.question}` }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
     new Promise<null>((r) => setTimeout(() => r(null), budget).unref())]);
@@ -314,6 +315,18 @@ async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { 
   const ids = new Set(findings.flatMap((f) => f.evidence).concat("ev-1"));
   const cited = [...reply.matchAll(/ev-\d+/g)].map((m) => m[0]);
   if (cited.some((c) => !ids.has(c))) return { text: template(), mode: `${llmLabel()} cited a missing receipt -> template` };
+  // every number must come from the computed findings, not from the model
+  const changeLine = `${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}, ${sgn(b.delta)}${(pct(b.bFrom, b.bTo) * 100).toFixed(1)}%)`;
+  const grounding = checkGrounding(reply, [changeLine, ...findings.map((f) => f.summary), ...findings.flatMap((f) => f.drivers.map((d) => `${fmt(d.from)} ${fmt(d.to)} ${fmt(d.delta)} ${(Math.abs(d.shareOfDelta) * 100).toFixed(0)}%`)), ...findings.map((f) => `${(f.explains * 100).toFixed(0)}%`)]);
+  if (grounding.ungrounded.length) return { text: template(), mode: `${llmLabel()} used ungrounded numbers (${grounding.ungrounded.slice(0, 3).join(", ")}) -> template`, grounding };
   // keep [ev-n] citations; unwrap any other bracketed words the model added
-  return { text: reply.replace(/\[(?!\s*ev-)([^\]]+)\]/g, "$1"), mode: llmLabel() };
+  return { text: tidyCitations(reply), mode: `${llmLabel()} · citations + ${grounding.claims} numbers verified`, grounding };
+}
+
+/** keep citations as [ev-n, ev-m]; unwrap any other bracketed words the model added */
+export function tidyCitations(text: string) {
+  return text.replace(/\[([^\]]+)\]/g, (_, inner: string) => {
+    const ids = inner.match(/ev-\d+/g);
+    return ids ? `[${ids.join(", ")}]` : inner;
+  });
 }

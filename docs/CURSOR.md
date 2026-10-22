@@ -7,3 +7,5 @@ WhyLedger was developed in Cursor during the hackathon window (Oct 22–27, 2026
 - **The human reviews and approves.** Everything was kept local until it was reviewed. Pushes and the submission are done by the team member.
 
 Generated code is permitted by the hackathon rules. Pre-existing components (Meterless reference engines, TPC-DS and NYC TLC sample data, DuckDB) are listed in `metadata.json`.
+
+**Evaluation was agent-built too.** After the first submission, a coding agent reviewed the entry against the judging rubric. It then wrote the planted-cause evaluation (`scripts/eval-planted.ts`) and the live Zetaris faithfulness evaluation (`scripts/eval-zetaris.ts`). It also added a numeric grounding guard (`src/agent/grounding.ts`). After a live run showed the narration overstating a *partial* finding, it tightened the narration prompt to respect verdicts. Results are in `eval/README.md`.

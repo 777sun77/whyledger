@@ -48,6 +48,8 @@ export interface Report {
   findings: Finding[];
   answer: string;
   answerMode: string;
+  /** numeric grounding of the model narration (absent when the template answered) */
+  grounding?: { claims: number; grounded: number; ungrounded: string[] };
   hunch?: { order: string[]; why: string; matched: boolean };
   recalled: { id: string; content: string; relevance: number }[];
   evidence: Evidence[];

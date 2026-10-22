@@ -10,7 +10,9 @@
     "serve": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "zetaris:setup": "tsx scripts/zetaris-setup.ts"
+    "zetaris:setup": "tsx scripts/zetaris-setup.ts",
+    "eval:planted": "tsx scripts/eval-planted.ts",
+    "eval:zetaris": "tsx scripts/eval-zetaris.ts"
   },
   "keywords": [],
   "author": "",
