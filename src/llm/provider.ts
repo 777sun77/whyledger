@@ -44,6 +44,7 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
   const ck = createHash("sha256").update(JSON.stringify([model, messages, opts.maxTokens ?? 900])).digest("hex");
   if (env("WHYLEDGER_LLM_CACHE", "1") === "1" && loadCache()[ck] !== undefined) { llmStats.cacheHits++; return cache![ck]; }
   const started = Date.now();
+  let budget = (opts.maxTokens ?? 900) + 2500;
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch(`${p.base}/chat/completions`, {
       method: "POST",
@@ -52,7 +53,7 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
         model,
         messages,
         // Nemotron reasons before answering; leave room for it
-        max_tokens: (opts.maxTokens ?? 900) + 2500,
+        max_tokens: budget,
         ...(config.llm.provider === "openrouter" ? { reasoning: { effort: "low" } } : {}),
         temperature: opts.temperature ?? 0.2,
       }),
@@ -64,6 +65,9 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
     const j: any = await r.json();
     const msg = j?.choices?.[0]?.message;
     const text = (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (process.env.WHYLEDGER_DEBUG) console.warn(`[llm] finish=${j?.choices?.[0]?.finish_reason} chars=${text.length} usage=${JSON.stringify(j?.usage ?? {})}`);
+    // reasoning used the whole budget before any answer: retry once with more room
+    if (!text && j?.choices?.[0]?.finish_reason === "length" && attempt < 2) { budget *= 2; continue; }
     llmStats.calls++; llmStats.ms += Date.now() - started;
     if (text) { loadCache()[ck] = text; fs.mkdirSync(config.stateDir, { recursive: true }); fs.writeFileSync(cacheFile, JSON.stringify(cache)); }
     return text;

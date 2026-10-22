@@ -40,10 +40,17 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
   step("frame", `${ds.name}: ${frame.channel ? frame.channel + " " : ""}${metric.label}, ${label(frame.from)} -> ${label(frame.to)}${scopeTxt ? ` | filter ${scopeTxt}` : ""} (${frame.framedBy})`, frame);
 
   const record = async (hypothesis: string, title: string, sql: string) => {
-    const s = Date.now();
-    const r = await backend.run(sql);
-    const ev: Evidence = { id: "", hypothesis, title, sql, backend: backend.name, lineage: ds.lineage, ranAt: new Date().toISOString(), ms: Date.now() - s, rows: r.rows };
+    // receipt id is reserved when the query starts, so ids are stable even when queries run in parallel
+    const ev: Evidence = { id: "", hypothesis, title, sql, backend: backend.name, lineage: ds.lineage, ranAt: new Date().toISOString(), ms: 0, rows: [] };
     ev.id = `ev-${evidence.push(ev)}`;
+    const s = Date.now();
+    try {
+      ev.rows = (await backend.run(sql)).rows;
+    } catch (e) {
+      evidence.splice(evidence.indexOf(ev), 1, { ...ev, title: `${title} (query failed)` });
+      throw e;
+    }
+    ev.ms = Date.now() - s;
     return ev;
   };
 
@@ -52,34 +59,30 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
   const recalled = recall.memories.map((m: any) => ({ id: m.memory.id, content: m.memory.content, relevance: m.relevance }));
   step("recall", recalled.length ? `${recalled.length} related memories (H-MEM ${recall.trace?.strategy ?? "hybrid"})` : "no prior memory on this question", recalled);
 
-  // 3. The fact to explain
-  const base = await timed("baseline", record("baseline", "The change to explain", baselineSql(frame, ds, backend)));
-  const bFrom = num(base.rows[0]?.v_from), bTo = num(base.rows[0]?.v_to), delta = bTo - bFrom;
-  step("baseline", `${metric.label} ${fmt(bFrom)} -> ${fmt(bTo)} (${sgn(delta)}${fmt(delta)}, ${sgn(delta)}${(pct(bFrom, bTo) * 100).toFixed(1)}%) [${base.id}]`, base);
-  if (bFrom === 0 && bTo === 0) throw new Error(`No data for ${label(frame.from)} / ${label(frame.to)}${scopeTxt ? ` with ${scopeTxt}` : ""}. Try: ${ds.examples[0]}`);
-
-  // 4. Nemotron's hunch (runs in parallel with the evidence; compared afterwards)
+  // 3. Launch everything at once: Nemotron's prior hunch, the baseline and every hypothesis query
   const hyps = hypotheses(frame, ds, backend);
   const hunchP = llmAvailable()
     ? chat([
         { role: "system", content: "You are a careful business analyst. Reply with JSON only." },
-        { role: "user", content: `Explain: ${question}\nObserved: ${metric.label} ${fmt(bFrom)} -> ${fmt(bTo)}.\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${hyps.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids, most likely first],"why":"one sentence"}` },
+        { role: "user", content: `Before seeing any data, rank the likely explanations for: ${question}\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${hyps.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids, most likely first],"why":"one sentence"}` },
       ], { maxTokens: 250 }).then((r) => parseJson<{ order: string[]; why: string }>(r)).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; })
     : Promise.resolve(null);
-  step("plan", `testing ${hyps.length} hypotheses in parallel on ${backend.name}${llmAvailable() ? " while Nemotron forms a hunch" : ""}`, hyps.map((h) => ({ id: h.id, title: h.title, question: h.question })));
-
-  // 5. Test every hypothesis in parallel; numbers come only from SQL
   const tTests = Date.now();
-  const findings = (await Promise.all(hyps.map(async (h) => {
-    try {
-      const ev = await record(h.id, h.title, h.sql);
-      const f = score(h.id, h.title, ev, delta, bFrom, unit);
-      step("test", `${h.id}: ${f.verdict} — ${f.summary} [${ev.id}, ${ev.ms} ms]`, { finding: f, evidence: ev });
-      return f;
-    } catch (e) {
-      step("test", `${h.id}: query failed (${(e as Error).message.slice(0, 120)})`);
-      return null;
-    }
+  const baseP = record("baseline", "The change to explain", baselineSql(frame, ds, backend));
+  const testP = hyps.map((h) => record(h.id, h.title, h.sql).then((ev) => ({ h, ev }), (e: Error) => ({ h, err: e })));
+  step("plan", `running the baseline + ${hyps.length} hypothesis queries in parallel on ${backend.name}${llmAvailable() ? " while Nemotron forms a hunch" : ""}`, hyps.map((h) => ({ id: h.id, title: h.title, question: h.question })));
+  const base = await timed("baseline", baseP);
+  const bFrom = num(base.rows[0]?.v_from), bTo = num(base.rows[0]?.v_to), delta = bTo - bFrom;
+  step("baseline", `${metric.label} ${fmt(bFrom)} -> ${fmt(bTo)} (${sgn(delta)}${fmt(delta)}, ${sgn(delta)}${(pct(bFrom, bTo) * 100).toFixed(1)}%) [${base.id}]`, base);
+  if (bFrom === 0 && bTo === 0) throw new Error(`No data for ${label(frame.from)} / ${label(frame.to)}${scopeTxt ? ` with ${scopeTxt}` : ""}. Try: ${ds.examples[0]}`);
+
+  // 5. Score every hypothesis; numbers come only from SQL
+  const findings = (await Promise.all(testP.map(async (p) => {
+    const r = await p;
+    if ("err" in r) { step("test", `${r.h.id}: query failed (${r.err.message.slice(0, 120)})`); return null; }
+    const f = score(r.h.id, r.h.title, r.ev, delta, bFrom, unit);
+    step("test", `${r.h.id}: ${f.verdict} — ${f.summary} [${r.ev.id}, ${r.ev.ms} ms]`, { finding: f, evidence: r.ev });
+    return f;
   }))).filter((f): f is Finding => !!f);
   timings.tests = Date.now() - tTests;
   findings.sort((a, b) => rank(b) - rank(a));
@@ -298,11 +301,11 @@ async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { 
     ].filter(Boolean).join("\n");
   };
   if (!llmAvailable()) return { text: template(), mode: llmLabel() };
-  const budget = Number(process.env.WHYLEDGER_NARRATE_WAIT_MS ?? 60000);
+  const budget = Number(process.env.WHYLEDGER_NARRATE_WAIT_MS ?? 75000);
   const reply = await Promise.race([chat([
     { role: "system", content: "You explain metric changes to a busy operations manager. Use ONLY the findings given; never invent numbers. Cite evidence ids in [brackets] after each claim. Mention what was ruled out. <=130 words, plain language, then one line 'Next check:' with a concrete follow-up." },
     { role: "user", content: `Question: ${frame.question}\nChange: ${metricLabel} ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
-  ], { maxTokens: 500 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
+  ], { maxTokens: 1500 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
     new Promise<null>((r) => setTimeout(() => r(null), budget).unref())]);
   if (process.env.WHYLEDGER_DEBUG) console.warn(`[narrate raw] ${JSON.stringify(reply)}`);
   if (!reply) return { text: template(), mode: `${llmLabel()} unavailable/timed out -> template` };
@@ -311,5 +314,6 @@ async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { 
   const ids = new Set(findings.flatMap((f) => f.evidence).concat("ev-1"));
   const cited = [...reply.matchAll(/ev-\d+/g)].map((m) => m[0]);
   if (cited.some((c) => !ids.has(c))) return { text: template(), mode: `${llmLabel()} cited a missing receipt -> template` };
-  return { text: reply, mode: llmLabel() };
+  // keep [ev-n] citations; unwrap any other bracketed words the model added
+  return { text: reply.replace(/\[(?!\s*ev-)([^\]]+)\]/g, "$1"), mode: llmLabel() };
 }
