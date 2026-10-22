@@ -10,7 +10,7 @@ export interface ChatMessage { role: "system" | "user" | "assistant"; content: s
 
 const PROVIDERS = {
   nvidia: { base: "https://integrate.api.nvidia.com/v1", key: "NVIDIA_API_KEY", model: "nvidia/nemotron-3.5-lightning-30b-a3b" },
-  openrouter: { base: "https://openrouter.ai/api/v1", key: "OPENROUTER_API_KEY", model: "nvidia/nemotron-3-super-120b-a12b:free" },
+  openrouter: { base: "https://openrouter.ai/api/v1", key: "OPENROUTER_API_KEY", model: "nvidia/nemotron-3.5-lightning:free" },
   meterless: { base: env("METERLESS_BASE_URL", "http://127.0.0.1:8088/v1")!, key: "METERLESS_API_KEY", model: "nemotron" },
 } as const;
 
@@ -37,12 +37,15 @@ export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; 
       body: JSON.stringify({
         model: env("WHYLEDGER_MODEL", p.model),
         messages,
-        max_tokens: opts.maxTokens ?? 900,
+        // Nemotron reasons before answering; leave room for it
+        max_tokens: (opts.maxTokens ?? 900) + 2500,
+        ...(config.llm.provider === "openrouter" ? { reasoning: { effort: "low" } } : {}),
         temperature: opts.temperature ?? 0.2,
       }),
       signal: AbortSignal.timeout(120_000),
     });
     if (r.status === 429) { await new Promise((s) => setTimeout(s, 4000 * (attempt + 1))); continue; }
+    if (r.status >= 500 && attempt < 2) { await new Promise((s) => setTimeout(s, 3000)); continue; }
     if (!r.ok) throw new Error(`LLM ${config.llm.provider} HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const j: any = await r.json();
     const msg = j?.choices?.[0]?.message;

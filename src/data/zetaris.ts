@@ -74,10 +74,11 @@ export class ZetarisBackend implements SqlBackend {
 
 /** The run-query response shape is not formally documented; accept the common shapes. */
 export function normalize(j: any): Omit<QueryResult, "ms"> {
-  const body = j?.data ?? j?.result ?? j;
-  const cols: string[] = body?.columns?.map((c: any) => (typeof c === "string" ? c : c.name ?? c.label)) ?? body?.schema?.map((c: any) => c.name) ?? [];
+  const body = j?.headers ? j : (j?.data && !Array.isArray(j.data) ? j.data : j?.result ?? j);
+  const cols: string[] = body?.headers?.map((c: any) => (typeof c === "string" ? c : c.name)) ?? body?.columns?.map((c: any) => (typeof c === "string" ? c : c.name ?? c.label)) ?? body?.schema?.map((c: any) => c.name) ?? [];
   let rows: any[] = body?.rows ?? body?.records ?? body?.data ?? [];
   if (rows.length && Array.isArray(rows[0])) rows = rows.map((r: any[]) => Object.fromEntries(r.map((v, i) => [cols[i] ?? `c${i}`, v])));
   const columns = cols.length ? cols : rows.length ? Object.keys(rows[0]) : [];
-  return { columns, rows: rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v]))) };
+  const coerce = (v: unknown) => (typeof v === "string" && /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(v) ? Number(v) : v);
+  return { columns, rows: rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), coerce(v)]))) };
 }

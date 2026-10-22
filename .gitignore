@@ -6,3 +6,4 @@ data/*.duckdb*
 .world/
 .env.local
 *.log
+.venv/

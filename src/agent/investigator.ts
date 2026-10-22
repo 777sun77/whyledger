@@ -33,7 +33,7 @@ export async function frameQuestion(question: string): Promise<Frame> {
       role: "user",
       content: `Question: ${question}\nSchema: {"metric":"store_revenue|web_revenue|catalog_revenue","from":{"year":1998-2003,"qoy":1-4 or null},"to":{"year":..,"qoy":..},"scope":{"state":"two-letter or null","category":"Books|Children|Electronics|Home|Jewelry|Men|Music|Shoes|Sports|Women or null"}}\n"from" is the earlier/baseline period.`,
     },
-  ], { maxTokens: 300 }).catch(() => null);
+  ], { maxTokens: 300 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
   const j = parseJson<Partial<Frame>>(reply);
   if (!j?.from?.year || !j?.to?.year) return fallback;
   const clean = (p: any) => ({ year: Number(p.year), qoy: p.qoy ? Number(p.qoy) : undefined });
@@ -77,7 +77,7 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
     const reply = await chat([
       { role: "system", content: "You are a careful business analyst planning an investigation. Reply with JSON only." },
       { role: "user", content: `Explain: ${question}\nObserved: revenue ${fmt(bFrom)} -> ${fmt(bTo)}.\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${HYPOTHESES.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids most-promising first],"why":"one sentence"}` },
-    ], { maxTokens: 250 }).catch(() => null);
+    ], { maxTokens: 250 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
     const j = parseJson<{ order: string[]; why: string }>(reply);
     if (j?.order?.length) {
       order = [...new Set([...j.order.filter((id) => order.includes(id)), ...order])];
@@ -270,7 +270,7 @@ async function narrate(frame: Frame, b: { bFrom: number; bTo: number; delta: num
   const reply = await chat([
     { role: "system", content: "You explain business metric changes to a store operations manager. Use ONLY the findings given. Every claim must cite its evidence id in [brackets]. Say what was ruled out. Be concise: <=150 words, plain language, end with one recommended next check." },
     { role: "user", content: `Question: ${frame.question}\nChange: ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
-  ], { maxTokens: 600 }).catch(() => null);
+  ], { maxTokens: 600 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; });
   if (!reply || !/\[ev-\d+/.test(reply)) return { text: template(), mode: `${llmLabel()} failed citation check -> template` };
   return { text: reply, mode: llmLabel() };
 }

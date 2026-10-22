@@ -35,7 +35,7 @@
     },
     "nvidia": {
       "used": true,
-      "models": ["nvidia/nemotron-3.5-lightning-30b-a3b (NVIDIA NIM free endpoint)", "nvidia/nemotron-3-super-120b-a12b:free (OpenRouter fallback)"],
+      "models": ["nvidia/nemotron-3.5-lightning-30b-a3b (NVIDIA NIM free endpoint)", "nvidia/nemotron-3.5-lightning:free (OpenRouter)"],
       "where": ["src/llm/provider.ts", "src/agent/investigator.ts frameQuestion(), plan, narrate()"],
       "how": "Nemotron frames the question, orders hypotheses using recalled memory, and writes the final answer, which must cite evidence ids or it is replaced by a deterministic template. Numbers never come from the model."
     },
