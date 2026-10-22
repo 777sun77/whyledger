@@ -36,12 +36,13 @@ export function llmAvailable(): boolean {
   return !!env(PROVIDERS[config.llm.provider].key);
 }
 
-export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number } = {}): Promise<string | null> {
+export async function chat(messages: ChatMessage[], opts: { maxTokens?: number; temperature?: number; demoKey?: string } = {}): Promise<string | null> {
   if (!llmAvailable()) return null;
   const p = PROVIDERS[config.llm.provider as keyof typeof PROVIDERS];
   const key = env(p.key, config.llm.provider === "meterless" ? "rt-local" : undefined);
   const model = env("WHYLEDGER_MODEL", p.model)!;
-  const ck = createHash("sha256").update(JSON.stringify([model, messages, opts.maxTokens ?? 900])).digest("hex");
+  // WHYLEDGER_DEMO_CACHE=1 keys replies by question only (not by recalled memory, which grows every run) so recorded demos replay instantly
+  const ck = createHash("sha256").update(JSON.stringify(env("WHYLEDGER_DEMO_CACHE") === "1" && opts.demoKey ? [model, opts.demoKey] : [model, messages, opts.maxTokens ?? 900])).digest("hex");
   if (env("WHYLEDGER_LLM_CACHE", "1") === "1" && loadCache()[ck] !== undefined) { llmStats.cacheHits++; return cache![ck]; }
   const started = Date.now();
   let budget = (opts.maxTokens ?? 900) + 2500;

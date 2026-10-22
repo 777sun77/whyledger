@@ -65,7 +65,7 @@ export async function investigate(question: string, backend: SqlBackend, mem: Me
     ? chat([
         { role: "system", content: "You are a careful business analyst. Reply with JSON only." },
         { role: "user", content: `Before seeing any data, rank the likely explanations for: ${question}\nPrior memory: ${recalled.map((r: { content: string }) => r.content).join(" | ") || "none"}\nHypotheses: ${hyps.map((h) => `${h.id}: ${h.question}`).join("; ")}\nReturn {"order":[ids, most likely first],"why":"one sentence"}` },
-      ], { maxTokens: 250 }).then((r) => parseJson<{ order: string[]; why: string }>(r)).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; })
+      ], { maxTokens: 250, demoKey: `hunch:${question}` }).then((r) => parseJson<{ order: string[]; why: string }>(r)).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; })
     : Promise.resolve(null);
   const tTests = Date.now();
   const baseP = record("baseline", "The change to explain", baselineSql(frame, ds, backend));
@@ -305,7 +305,7 @@ async function narrate(frame: Frame, metricLabel: string, unit: "$" | "#", b: { 
   const reply = await Promise.race([chat([
     { role: "system", content: "You explain metric changes to a busy operations manager. Use ONLY the findings given; never invent numbers. Cite evidence ids in [brackets] after each claim. Mention what was ruled out. <=130 words, plain language, then one line 'Next check:' with a concrete follow-up." },
     { role: "user", content: `Question: ${frame.question}\nChange: ${metricLabel} ${fmt(b.bFrom)} -> ${fmt(b.bTo)} (${sgn(b.delta)}${fmt(b.delta)}) [ev-1]\nFindings: ${JSON.stringify(facts)}\nPrior memory: ${JSON.stringify(recalled.map((r) => r.content))}` },
-  ], { maxTokens: 1500 }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
+  ], { maxTokens: 1500, demoKey: `narrate:${frame.question}` }).catch((e) => { console.warn(`[llm] ${(e as Error).message.slice(0, 200)}`); return null; }),
     new Promise<null>((r) => setTimeout(() => r(null), budget).unref())]);
   if (process.env.WHYLEDGER_DEBUG) console.warn(`[narrate raw] ${JSON.stringify(reply)}`);
   if (!reply) return { text: template(), mode: `${llmLabel()} unavailable/timed out -> template` };

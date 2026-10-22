@@ -17,6 +17,14 @@ When a KPI moves, an analyst usually spends half a day querying several disconne
 9. **Narrates** with Nemotron, but numbers never come from the model. The answer must cite only receipt ids that exist. Otherwise a deterministic template is shown instead.
 10. **Learns**: 👍/👎 feedback goes into H-MEM's append-only trust ledger and shapes the next recall.
 
+## Screenshots
+
+| Answer with findings, ruled-out panel and Nemotron hunch | Receipt drawer: exact Zetaris SQL, rows, lineage |
+|---|---|
+| ![taxi](docs/screenshots/taxi-2-answer.png) | ![receipt](docs/screenshots/taxi-3-receipt.png) |
+
+![retail](docs/screenshots/retail-2-answer.png)
+
 ## Architecture
 
 ```mermaid
@@ -62,6 +70,8 @@ npm run investigate -- "Why did yellow taxi trips drop from 2024-10 to 2025-02?"
 ```
 
 There is also an offline mode with no Zetaris and no keys: `npm run seed:local`, then `WHYLEDGER_BACKEND=local WHYLEDGER_LLM=none npm run serve`. It runs the same cube SQL on DuckDB over TPC-DS sf0.1. It is for development only; the demo runs on Zetaris.
+
+For recorded demos, `WHYLEDGER_DEMO_CACHE=1` keys cached Nemotron replies by question, so a replay is instant. The SQL still runs live on Zetaris.
 
 Tests: `npm test`, plus a type check with `npm run typecheck`.
 
